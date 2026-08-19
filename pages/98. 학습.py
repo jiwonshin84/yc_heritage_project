@@ -15,12 +15,21 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score
 
 # ------------------------------------------------------------
-# OS별 한글 폰트 및 마이너스 기호 설정 (Streamlit Cloud 대응)
+# OS별 한글 폰트 및 마이너스 기호 설정 (윈도우 폰트 경로 직접 지정)
 # ------------------------------------------------------------
-if platform.system() == 'Darwin':  # Mac OS
+import matplotlib.font_manager as fm
+import os
+
+if platform.system() == 'Windows':
+    # 윈도우 맑은 고딕 경로 직접 지정
+    font_path = "C:/Windows/Fonts/malgun.ttf"
+    if os.path.exists(font_path):
+        font_name = fm.FontProperties(fname=font_path).get_name()
+        plt.rc('font', family=font_name)
+    else:
+        plt.rc('font', family='Malgun Gothic')
+elif platform.system() == 'Darwin':  # Mac OS
     plt.rc('font', family='AppleGothic')
-elif platform.system() == 'Windows':  # Windows OS
-    plt.rc('font', family='Malgun Gothic')
 else:  # Linux (Streamlit Cloud)
     plt.rc('font', family='NanumGothic')
 
