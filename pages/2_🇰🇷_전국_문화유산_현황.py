@@ -82,6 +82,7 @@ if df is not None:
         st.plotly_chart(fig1, use_container_width=True)
 
     with row1_right:
+        '''
         st.markdown("### 🫧 국가유산 종목별 현황")
         type_count = df["국가유산종목"].value_counts().reset_index()
         type_count.columns = ["국가유산종목", "개수"]
@@ -106,6 +107,35 @@ if df is not None:
             height=450, 
             showlegend=False
         )
+        st.plotly_chart(fig2, use_container_width=True)
+        '''
+        st.markdown("### ☀️ 국가유산 종목별 현황")
+
+        # 데이터 집계
+        type_count = df["국가유산종목"].value_counts().reset_index()
+        type_count.columns = ["국가유산종목", "개수"]
+        
+        # 선버스트 차트 생성
+        fig2 = px.sunburst(
+            type_count,
+            path=["국가유산종목"],
+            values="개수",
+            color="개수",
+            color_continuous_scale="Blues",
+        )
+        
+        # 텍스트 표시 방식 설정 (종목명, 건수, 비율 등)
+        fig2.update_traces(
+            textinfo="label+value",
+            insidetextorientation="horizontal"
+        )
+        
+        # 레이아웃 설정
+        fig2.update_layout(
+            margin=dict(t=20, l=10, r=10, b=10),
+            height=500
+        )
+        
         st.plotly_chart(fig2, use_container_width=True)
 
     # =================================================
