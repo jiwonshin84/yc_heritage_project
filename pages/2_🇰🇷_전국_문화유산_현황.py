@@ -131,16 +131,7 @@ if df is not None:
         fig4 = px.imshow(heatmap_df, text_auto=True, color_continuous_scale="YlGnBu", aspect="auto")
         fig4.update_layout(height=500, margin=dict(t=20, l=10, r=10, b=10), coloraxis_showscale=False)
         st.plotly_chart(fig4, use_container_width=True)
-    '''
-        st.markdown("### 🌡 경북 시군구별 종목 현황")
-        heatmap_df = pd.pivot_table(gb_df, index="시군구명", columns="국가유산종목", aggfunc="size", fill_value=0)
-        top_cities = gb_df["시군구명"].value_counts().head(15).index
-        heatmap_df = heatmap_df.loc[top_cities]
-
-        fig4 = px.imshow(heatmap_df, text_auto=True, color_continuous_scale="YlGnBu", aspect="auto")
-        fig4.update_layout(height=500, margin=dict(t=20, l=10, r=10, b=10), coloraxis_showscale=False)
-        st.plotly_chart(fig4, use_container_width=True)
-'''
+        
     # =================================================
     # 3행: 영천시 특징 (Radar) & 인구 대비 밀도 (Bubble)
     # =================================================
