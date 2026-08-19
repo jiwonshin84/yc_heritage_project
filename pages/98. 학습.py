@@ -10,6 +10,11 @@ import joblib
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 
+# Matplotlib 기본 한글 및 폰트 설정 (Streamlit Cloud 리눅스 환경)
+plt.rcParams['font.family'] = 'DejaVu Sans' # 영문 표기 시 에러 방지
+plt.rcParams['axes.unicode_minus'] = False
+
+
 st.set_page_config(page_title="데이터 수집 및 중요도 분석", layout="wide")
 
 st.title("📊 1페이지: 기상·미세먼지 데이터 수집 및 재질별 중요도 분석")
