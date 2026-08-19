@@ -27,7 +27,7 @@ ASOS_URL = "http://apis.data.go.kr/1360000/AsosDalyInfoService/getWthrDataList"
 STN_ID = "281"  # 영천 관측소
 
 st.title(
-    f"📊 {start_year}~{end_year}년 ({end_year-start_year+1}개년) 기상·미세먼지 수집 데이터 시각화"
+    f"📊 {start_year}~{end_year}년 ({end_year-start_year+1}개년) 데이터 수집 및 시각화"
 )
 
 
