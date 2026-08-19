@@ -5,7 +5,6 @@ import pandas as pd
 import numpy as np
 import itertools
 import matplotlib.pyplot as plt
-import koreanize_matplotlib
 import joblib
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
