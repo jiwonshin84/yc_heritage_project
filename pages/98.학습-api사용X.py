@@ -1,6 +1,4 @@
 import streamlit as st
-import requests
-import time
 import pandas as pd
 import numpy as np
 import itertools
@@ -21,36 +19,10 @@ st.set_page_config(page_title="데이터 수집 및 중요도 분석", layout="w
 st.title("📊 1페이지: 기상·미세먼지 데이터 수집 및 분류 모델 / 재질별 중요도 분석")
 
 # ------------------------------------------------------------
-# 1. API 및 기본 설정
+# 1. 기본 설정 및 한글 변수명 매핑 사전
 # ------------------------------------------------------------
-ASOS_SERVICE_KEY = "feb2bfabd299d5d05e89c7aec49ba7e706112603e76549a92e868bd86ec60323"
-ASOS_URL = "http://apis.data.go.kr/1360000/AsosDalyInfoService/getWthrDataList"
-STN_ID = "281" # 영천 관측소
+DATA_PATH = "data/processed/[2016_2025] yeongcheon.csv"
 
-def fetch_asos_year(year):
-    start_dt = f"{year}0101"
-    end_dt   = f"{year}1231"
-    params = {
-        "serviceKey": ASOS_SERVICE_KEY,
-        "numOfRows": "400",
-        "pageNo": "1",
-        "dataType": "JSON",
-        "dataCd": "ASOS",
-        "dateCd": "DAY",
-        "startDt": start_dt,
-        "endDt": end_dt,
-        "stnIds": STN_ID
-    }
-    try:
-        response = requests.get(ASOS_URL, params=params, timeout=30)
-        result = response.json()
-        items = result["response"]["body"]["items"]["item"]
-        return pd.DataFrame(items)
-    except Exception as e:
-        st.error(f"{year}년 수집 실패: {e}")
-        return pd.DataFrame()
-
-# 영문 변수명 -> 한글 변수명 매핑 사전
 FEATURE_NAME_KO = {
     "corrosion_risk": "부식 위험도",
     "humidity": "평균 습도",
@@ -79,38 +51,24 @@ FEATURE_NAME_KO = {
 }
 
 # ------------------------------------------------------------
-# 2. 데이터 수집 및 전처리 실행 버튼
+# 2. 로컬 데이터 로드 및 전처리 실행 버튼
 # ------------------------------------------------------------
-if st.button("🚀 데이터 수집, 모델 학습 및 분석 시작"):
-    with st.spinner("기상청 API 및 미세먼지 데이터를 수집 중입니다..."):
-        all_years = []
-        for year in range(2016, 2026):
-            df_year = fetch_asos_year(year)
-            all_years.append(df_year)
-            time.sleep(0.2)
-        
-        weather_raw = pd.concat(all_years, ignore_index=True)
-        
-        # 컬럼 선택 및 이름 변경
-        weather = weather_raw[["tm", "avgTa", "maxTa", "minTa", "avgRhm", "sumRn", "avgWs", "sumSsHr", "avgTs"]].copy()
-        weather.columns = ["date", "temp_avg", "temp_max", "temp_min", "humidity", "rainfall", "wind_speed", "solar_radiation", "ground_temp"]
-        
-        # 타입 변환
-        weather["date"] = pd.to_datetime(weather["date"], errors="coerce")
-        numeric_cols = ["temp_avg", "temp_max", "temp_min", "humidity", "rainfall", "wind_speed", "solar_radiation", "ground_temp"]
-        for col in numeric_cols:
-            weather[col] = pd.to_numeric(weather[col], errors="coerce")
-            
-        weather["rainfall"] = weather["rainfall"].fillna(0)
-        weather = weather.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
+if st.button("🚀 로컬 데이터 로드, 모델 학습 및 분석 시작"):
+    with st.spinner("로컬 데이터 파일([2016_2025] yeongcheon.csv)을 불러오는 중입니다..."):
+        try:
+            df = pd.read_csv(DATA_PATH)
+        except Exception as e:
+            st.error(f"데이터 파일 로드 실패: {e}")
+            st.stop()
 
-        # 미세먼지 데이터 수집
-        air_url = "https://docs.google.com/spreadsheets/d/1fBEnheVOP-23Hmv_5ZJZVy6m9VmNkpVd2XutOdmlYc8/export?format=csv&gid=700055413"
-        air = pd.read_csv(air_url)
-        air["date"] = pd.to_datetime(air["date"], errors="coerce")
+        # 날짜 타입 변환 및 정렬
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
+            df = df.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
 
-        # 데이터 병합
-        df = pd.merge(weather, air, on="date", how="left")
+        # 결측치 보완 및 기본 수치형 타입 보장
+        if "rainfall" in df.columns:
+            df["rainfall"] = df["rainfall"].fillna(0)
 
         # ------------------------------------------------------------
         # 3. 파생변수 생성
@@ -207,10 +165,10 @@ if st.button("🚀 데이터 수집, 모델 학습 및 분석 시작"):
         joblib.dump(rf_model, "best_rf_model.pkl")
         joblib.dump(X_encoded.columns.tolist(), "model_features.pkl")
 
-    st.success("데이터 수집, 전처리 및 3개 분류 모델 학습이 완료되었습니다!")
+    st.success("로컬 데이터 로드, 전처리 및 3개 분류 모델 학습이 완료되었습니다!")
 
     # ------------------------------------------------------------
-    # 6. 시각화 (Plotly 변환: 한글 깨짐 완전 해결)
+    # 6. 시각화 (Plotly)
     # ------------------------------------------------------------
     st.markdown("---")
     col1, col2 = st.columns(2)
@@ -260,7 +218,7 @@ if st.button("🚀 데이터 수집, 모델 학습 및 분석 시작"):
         # 한글 변수명 적용
         top10["Feature_KO"] = top10["Feature"].map(lambda x: FEATURE_NAME_KO.get(x, x))
         
-        # Plotly 가로 막대 그래프는 아래에서 위로 그려지므로 오름차순 정렬
+        # Plotly 가로 막대 그래프용 오름차순 정렬
         top10_sorted = top10.sort_values("Importance", ascending=True)
 
         fig2 = px.bar(
@@ -299,7 +257,6 @@ if st.button("🚀 데이터 수집, 모델 학습 및 분석 시작"):
     colors = ["#8D6E63", "#D7CCC8", "#78909C", "#EC407A", "#AB47BC"]
 
     for idx, (mat, weights) in enumerate(material_weights.items()):
-        # 오름차순 정렬하여 상위 요소가 위쪽에 배치되도록 설정
         sorted_weights = dict(sorted(weights.items(), key=lambda item: item[1]))
         
         fig3.add_trace(
