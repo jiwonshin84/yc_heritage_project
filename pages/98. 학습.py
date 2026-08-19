@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 import itertools
 import matplotlib.pyplot as plt
-import koreanize_matplotlib  # 한글 폰트 자동 설정
+import platform
 import joblib
 
 from sklearn.model_selection import train_test_split
@@ -13,6 +13,18 @@ from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score
+
+# ------------------------------------------------------------
+# OS별 한글 폰트 및 마이너스 기호 설정 (Streamlit Cloud 대응)
+# ------------------------------------------------------------
+if platform.system() == 'Darwin':  # Mac OS
+    plt.rc('font', family='AppleGothic')
+elif platform.system() == 'Windows':  # Windows OS
+    plt.rc('font', family='Malgun Gothic')
+else:  # Linux (Streamlit Cloud)
+    plt.rc('font', family='NanumGothic')
+
+plt.rc('axes', unicode_minus=False)
 
 st.set_page_config(page_title="데이터 수집 및 중요도 분석", layout="wide")
 
