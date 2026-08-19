@@ -301,7 +301,7 @@ st.markdown("""
     font-size:25px;
     margin-bottom:10px;
 ">
-🌿 영천시 환경 데이터 및 문화재 현황
+🌿 영천시 실시간 환경 데이터 및 문화재 현황
 </h3>
 """, unsafe_allow_html=True)
 
