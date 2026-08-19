@@ -133,6 +133,44 @@ if df is not None:
         top_cities = gb_df["시군구명"].value_counts().head(15).index
         heatmap_df = heatmap_df.loc[top_cities]
     
+        row_totals = heatmap_df.sum(axis=1)
+    
+        # 1. Y축 라벨 생성 (영천시만 빨간색 bold + 별표 강조)
+        new_index = []
+        for city in heatmap_df.index:
+            total = row_totals[city]
+            if city == "영천시":
+                new_index.append(f"<b style='color: #e74c3c; font-size: 14px;'>★ {city} ({total}건)</b>")
+            else:
+                new_index.append(f"{city} ({total}건)")
+        heatmap_df.index = new_index
+    
+        fig4 = px.imshow(heatmap_df, text_auto=True, color_continuous_scale="YlGnBu", aspect="auto")
+    
+        # 2. 영천시 행 위치에 강조 테두리(Red Box) 그리기
+        city_list = list(top_cities)
+        if "영천시" in city_list:
+            yc_idx = city_list.index("영천시")
+            fig4.add_shape(
+                type="rect",
+                x0=-0.5, 
+                x1=len(heatmap_df.columns) - 0.5,
+                y0=yc_idx - 0.5, 
+                y1=yc_idx + 0.5,
+                line=dict(color="#e74c3c", width=3),  # 강조 테두리 색상 및 두께
+                fillcolor="rgba(0,0,0,0)"            # 내부 투명
+            )
+    
+        fig4.update_layout(height=500, margin=dict(t=20, l=10, r=10, b=10), coloraxis_showscale=False)
+        st.plotly_chart(fig4, use_container_width=True)
+
+
+        '''
+        st.markdown("### 🌡 경북 시군구별 종목 현황")
+        heatmap_df = pd.pivot_table(gb_df, index="시군구명", columns="국가유산종목", aggfunc="size", fill_value=0)
+        top_cities = gb_df["시군구명"].value_counts().head(15).index
+        heatmap_df = heatmap_df.loc[top_cities]
+    
         # 각 시군구별 총 합계 수 계산 및 인덱스명 변경
         row_totals = heatmap_df.sum(axis=1)
         heatmap_df.index = [f"{city} ({row_totals[city]}건)" for city in heatmap_df.index]
@@ -140,6 +178,7 @@ if df is not None:
         fig4 = px.imshow(heatmap_df, text_auto=True, color_continuous_scale="YlGnBu", aspect="auto")
         fig4.update_layout(height=500, margin=dict(t=20, l=10, r=10, b=10), coloraxis_showscale=False)
         st.plotly_chart(fig4, use_container_width=True)
+        '''
         
     # =================================================
     # 3행: 영천시 특징 (Radar) & 인구 대비 밀도 (Bubble)
