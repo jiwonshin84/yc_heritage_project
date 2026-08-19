@@ -18,7 +18,7 @@ from sklearn.metrics import accuracy_score
 
 st.set_page_config(page_title="데이터 수집 및 중요도 분석", layout="wide")
 
-st.title("📊 1페이지: 기상·미세먼지 데이터 수집 및 분류 모델 / 재질별 중요도 분석")
+st.title("📊 위험 예측 분류 모델 / 재질별 중요도 분석")
 
 # ------------------------------------------------------------
 # 1. API 및 기본 설정
