@@ -4,36 +4,17 @@ import time
 import pandas as pd
 import numpy as np
 import itertools
-import matplotlib.pyplot as plt
-import platform
 import joblib
+
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score
-
-# ------------------------------------------------------------
-# OS별 한글 폰트 및 마이너스 기호 설정 (윈도우 폰트 경로 직접 지정)
-# ------------------------------------------------------------
-import matplotlib.font_manager as fm
-import os
-
-if platform.system() == 'Windows':
-    # 윈도우 맑은 고딕 경로 직접 지정
-    font_path = "C:/Windows/Fonts/malgun.ttf"
-    if os.path.exists(font_path):
-        font_name = fm.FontProperties(fname=font_path).get_name()
-        plt.rc('font', family=font_name)
-    else:
-        plt.rc('font', family='Malgun Gothic')
-elif platform.system() == 'Darwin':  # Mac OS
-    plt.rc('font', family='AppleGothic')
-else:  # Linux (Streamlit Cloud)
-    plt.rc('font', family='NanumGothic')
-
-plt.rc('axes', unicode_minus=False)
 
 st.set_page_config(page_title="데이터 수집 및 중요도 분석", layout="wide")
 
@@ -229,30 +210,42 @@ if st.button("🚀 데이터 수집, 모델 학습 및 분석 시작"):
     st.success("데이터 수집, 전처리 및 3개 분류 모델 학습이 완료되었습니다!")
 
     # ------------------------------------------------------------
-    # 6. 시각화 (모델 비교 / 환경 요인 중요도 / 재질별 가중치)
+    # 6. 시각화 (Plotly 변환: 한글 깨짐 완전 해결)
     # ------------------------------------------------------------
     st.markdown("---")
     col1, col2 = st.columns(2)
 
-    # [시각화 1] 3개 분류 모델 성능 비교
+    # [시각화 1] 3개 분류 모델 성능 비교 (Plotly)
     with col1:
         st.subheader("📈 분류 모델 정확도(Accuracy) 비교")
-        fig1, ax1 = plt.subplots(figsize=(6, 4))
-        models_name = list(model_results.keys())
-        accuracies = [v * 100 for v in model_results.values()]
-        
-        bars = ax1.bar(models_name, accuracies, color=["#4C72B0", "#55A868", "#C44E52"])
-        ax1.set_ylim(70, 100)
-        ax1.set_ylabel("정확도 (%)")
-        ax1.set_title("머신러닝 알고리즘별 예측 정확도 비교")
-        
-        for bar in bars:
-            height = bar.get_height()
-            ax1.text(bar.get_x() + bar.get_width()/2., height + 0.5, f"{height:.2f}%", ha='center', va='bottom', fontsize=10, fontweight='bold')
-        
-        st.pyplot(fig1)
+        df_models = pd.DataFrame({
+            "Model": list(model_results.keys()),
+            "Accuracy": [v * 100 for v in model_results.values()]
+        })
 
-    # [시각화 2] 최고 성능 모델(RandomForest) 기준 환경 요인 중요도 TOP 10
+        fig1 = px.bar(
+            df_models, 
+            x="Model", 
+            y="Accuracy",
+            color="Model",
+            color_discrete_sequence=["#4C72B0", "#55A868", "#C44E52"],
+            title="머신러닝 알고리즘별 예측 정확도 비교"
+        )
+        fig1.update_traces(
+            texttemplate="%{y:.2f}%", 
+            textposition="outside"
+        )
+        fig1.update_layout(
+            yaxis_range=[70, 100],
+            yaxis_title="정확도 (%)",
+            xaxis_title="",
+            showlegend=False,
+            height=400,
+            margin=dict(t=50, b=20, l=10, r=10)
+        )
+        st.plotly_chart(fig1, use_container_width=True)
+
+    # [시각화 2] 최고 성능 모델(RandomForest) 기준 환경 요인 중요도 TOP 10 (Plotly)
     with col2:
         st.subheader("📌 환경 요인 중요도 TOP 10 (RandomForest)")
         feature_cols = [c for c in X_encoded.columns if not c.startswith("material_") and not c.startswith("exposure_")]
@@ -266,17 +259,29 @@ if st.button("🚀 데이터 수집, 모델 학습 및 분석 시작"):
         
         # 한글 변수명 적용
         top10["Feature_KO"] = top10["Feature"].map(lambda x: FEATURE_NAME_KO.get(x, x))
+        
+        # Plotly 가로 막대 그래프는 아래에서 위로 그려지므로 오름차순 정렬
+        top10_sorted = top10.sort_values("Importance", ascending=True)
 
-        fig2, ax2 = plt.subplots(figsize=(6, 4))
-        ax2.barh(top10["Feature_KO"], top10["Importance"], color="#3498db")
-        ax2.invert_yaxis()
-        ax2.set_xlabel("특성 중요도 (Feature Importance)")
-        ax2.set_title("문화유산 위험도 측정 시 주요 환경 요인 TOP 10")
-        st.pyplot(fig2)
+        fig2 = px.bar(
+            top10_sorted,
+            x="Importance",
+            y="Feature_KO",
+            orientation="h",
+            title="문화유산 위험도 측정 시 주요 환경 요인 TOP 10",
+            color_discrete_sequence=["#3498db"]
+        )
+        fig2.update_layout(
+            xaxis_title="특성 중요도 (Feature Importance)",
+            yaxis_title="",
+            height=400,
+            margin=dict(t=50, b=20, l=10, r=10)
+        )
+        st.plotly_chart(fig2, use_container_width=True)
 
     st.markdown("---")
     
-    # [시각화 3] 재질별 파생변수 가중치(중요도) 비교
+    # [시각화 3] 재질별 파생변수 가중치(중요도) 비교 (Plotly Subplots)
     st.subheader("🏛️ 문화유산 재질별 주요 환경 파생변수 가중치 구조")
     
     material_weights = {
@@ -287,21 +292,32 @@ if st.button("🚀 데이터 수집, 모델 학습 및 분석 시작"):
         "기타": {"풍화 위험도": 20, "산성 위험도": 20, "산화 위험도": 20, "부식 위험도": 20, "미세먼지 누적부하": 20}
     }
 
-    fig3, axes = plt.subplots(1, 5, figsize=(18, 4), sharey=True)
+    fig3 = make_subplots(
+        rows=1, cols=5, 
+        subplot_titles=[f"[{mat}] 가중치 (%)" for mat in material_weights.keys()]
+    )
     colors = ["#8D6E63", "#D7CCC8", "#78909C", "#EC407A", "#AB47BC"]
 
     for idx, (mat, weights) in enumerate(material_weights.items()):
-        ax = axes[idx]
-        features = list(weights.keys())
-        values = list(weights.values())
+        # 오름차순 정렬하여 상위 요소가 위쪽에 배치되도록 설정
+        sorted_weights = dict(sorted(weights.items(), key=lambda item: item[1]))
         
-        ax.barh(features, values, color=colors[idx])
-        ax.invert_yaxis()
-        ax.set_title(f"[{mat}] 가중치 (%)", fontsize=12, fontweight='bold')
-        ax.set_xlabel("가중치 (%)")
+        fig3.add_trace(
+            go.Bar(
+                x=list(sorted_weights.values()),
+                y=list(sorted_weights.keys()),
+                orientation="h",
+                marker_color=colors[idx],
+                showlegend=False
+            ),
+            row=1, col=idx+1
+        )
 
-    plt.tight_layout()
-    st.pyplot(fig3)
+    fig3.update_layout(
+        height=450,
+        margin=dict(t=50, b=30, l=10, r=10)
+    )
+    st.plotly_chart(fig3, use_container_width=True)
 
     # 데이터 프레임 출력
     st.subheader("📋 분류 모델 성능 및 상위 중요도 요인 요약")
