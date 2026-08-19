@@ -8,7 +8,7 @@ import joblib
 
 st.set_page_config(page_title="최근 7일 위험도 예측", layout="wide")
 
-st.title("🔮 2페이지: 실시간 최근 7일 데이터 기반 위험도 예측")
+st.title("🔮 최근 7일 데이터 기반 위험도 예측")
 
 # ------------------------------------------------------------
 # 1. 저장된 모델 및 특성 목록 로드
@@ -25,7 +25,7 @@ def load_model():
 model, feature_cols = load_model()
 
 if model is None:
-    st.warning("⚠️ 1페이지에서 모델 학습(`best_rf_model.pkl`)을 먼저 완료해 주세요!")
+    st.warning("⚠️ 위험 예측 분류 모델 학습(`best_rf_model.pkl`)을 먼저 완료해 주세요!")
     st.stop()
 
 # ------------------------------------------------------------
