@@ -107,25 +107,6 @@ if df is not None:
             showlegend=False
         )
         st.plotly_chart(fig2, use_container_width=True)
-        '''
-        st.markdown("### 🫧 국가유산 종목별 현황")
-        type_count = df["국가유산종목"].value_counts().reset_index()
-        type_count.columns = ["국가유산종목", "개수"]
-
-        n = len(type_count)
-        cols = 4
-        type_count["x"] = [i % cols for i in range(n)]
-        type_count["y"] = [-(i // cols) for i in range(n)]
-
-        fig2 = px.scatter(
-            type_count, x="x", y="y", size="개수", color="개수",
-            text="국가유산종목", size_max=60, color_continuous_scale="Blues"
-        )
-        fig2.update_traces(textposition="middle center", marker=dict(opacity=0.85, line=dict(width=1, color="white")))
-        fig2.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False), 
-                          margin=dict(t=20, l=10, r=10, b=10), height=450, showlegend=False)
-        st.plotly_chart(fig2, use_container_width=True)
-        '''
 
     # =================================================
     # 2행: 경북 상세 (Polar Bar & Heatmap)
