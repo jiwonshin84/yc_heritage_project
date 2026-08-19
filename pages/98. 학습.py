@@ -5,18 +5,18 @@ import pandas as pd
 import numpy as np
 import itertools
 import matplotlib.pyplot as plt
+import koreanize_matplotlib  # 한글 폰트 자동 설정
 import joblib
+
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-
-# Matplotlib 기본 한글 및 폰트 설정 (Streamlit Cloud 리눅스 환경)
-plt.rcParams['font.family'] = 'DejaVu Sans' # 영문 표기 시 에러 방지
-plt.rcParams['axes.unicode_minus'] = False
-
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score
 
 st.set_page_config(page_title="데이터 수집 및 중요도 분석", layout="wide")
 
-st.title("📊 1페이지: 기상·미세먼지 데이터 수집 및 재질별 중요도 분석")
+st.title("📊 1페이지: 기상·미세먼지 데이터 수집 및 분류 모델 / 재질별 중요도 분석")
 
 # ------------------------------------------------------------
 # 1. API 및 기본 설정
@@ -48,10 +48,38 @@ def fetch_asos_year(year):
         st.error(f"{year}년 수집 실패: {e}")
         return pd.DataFrame()
 
+# 영문 변수명 -> 한글 변수명 매핑 사전
+FEATURE_NAME_KO = {
+    "corrosion_risk": "부식 위험도",
+    "humidity": "평균 습도",
+    "high_humidity_risk": "고습도 위험 지속도",
+    "oxidation_risk": "산화 위험도",
+    "acid_risk": "산성 위험도",
+    "pm25": "초미세먼지(PM2.5)",
+    "weathering_risk": "풍화 위험도",
+    "no2": "이산화질소(NO2)",
+    "pm_load": "미세먼지 누적부하",
+    "pm10": "미세먼지(PM10)",
+    "temp_range": "일교차",
+    "humidity_std3": "3일 습도 변동성",
+    "rainfall_7d": "7일 누적 강수량",
+    "mold_risk": "곰팡이 발생 위험도",
+    "temp_avg": "평균 기온",
+    "temp_max": "최고 기온",
+    "temp_min": "최저 기온",
+    "rainfall": "일 강수량",
+    "wind_speed": "평균 풍속",
+    "solar_radiation": "일사량",
+    "ground_temp": "지면 온도",
+    "o3": "오존(O3)",
+    "co": "일산화탄소(CO)",
+    "so2": "아황산가스(SO2)"
+}
+
 # ------------------------------------------------------------
 # 2. 데이터 수집 및 전처리 실행 버튼
 # ------------------------------------------------------------
-if st.button("🚀 데이터 수집 및 분석 시작"):
+if st.button("🚀 데이터 수집, 모델 학습 및 분석 시작"):
     with st.spinner("기상청 API 및 미세먼지 데이터를 수집 중입니다..."):
         all_years = []
         for year in range(2016, 2026):
@@ -138,12 +166,10 @@ if st.button("🚀 데이터 수집 및 분석 시작"):
             else: return "안전"
 
         dataset["target"] = dataset["material_risk"].apply(label)
-
-        # CSV 저장 (다음 페이지 연동용)
         dataset.to_csv("processed_dataset.csv", index=False, encoding="utf-8-sig")
 
         # ------------------------------------------------------------
-        # 5. RandomForest 모델 학습 및 저장
+        # 5. 머신러닝 3개 모델 비교 학습 및 최적 모델 저장
         # ------------------------------------------------------------
         X = dataset[["temp_avg","temp_max","temp_min","humidity","rainfall","wind_speed","solar_radiation","ground_temp","pm10","pm25","o3","no2","co","so2","temp_range","humidity_std3","rainfall_7d","high_humidity_risk","weathering_risk","mold_risk","pm_load","acid_risk","oxidation_risk","corrosion_risk","material","exposure"]]
         y = dataset["target"]
@@ -151,35 +177,112 @@ if st.button("🚀 데이터 수집 및 분석 시작"):
 
         X_train, X_test, y_train, y_test = train_test_split(X_encoded, y, test_size=0.2, random_state=42, stratify=y)
 
-        # 성능이 가장 우수했던 RandomForest 모델 사용
+        # 3개 모델 정의 및 학습
         rf_model = RandomForestClassifier(n_estimators=300, random_state=42, n_jobs=-1)
-        rf_model.fit(X_train, y_train)
+        gb_model = GradientBoostingClassifier(n_estimators=200, learning_rate=0.05, random_state=42)
+        lr_model = LogisticRegression(max_iter=2000, solver="lbfgs")
 
-        # 모델 및 특성 목록 저장
+        rf_model.fit(X_train, y_train)
+        gb_model.fit(X_train, y_train)
+
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_test_scaled = scaler.transform(X_test)
+        lr_model.fit(X_train_scaled, y_train)
+
+        # 모델별 정확도 평가
+        acc_rf = accuracy_score(y_test, rf_model.predict(X_test))
+        acc_gb = accuracy_score(y_test, gb_model.predict(X_test))
+        acc_lr = accuracy_score(y_test, lr_model.predict(X_test_scaled))
+
+        model_results = {
+            "RandomForest": acc_rf,
+            "GradientBoosting": acc_gb,
+            "LogisticRegression": acc_lr
+        }
+
+        # 최적 모델 저장 (RandomForest)
         joblib.dump(rf_model, "best_rf_model.pkl")
         joblib.dump(X_encoded.columns.tolist(), "model_features.pkl")
 
-    st.success("데이터 수집, 전처리 및 모델 학습이 완료되었습니다!")
+    st.success("데이터 수집, 전처리 및 3개 분류 모델 학습이 완료되었습니다!")
 
     # ------------------------------------------------------------
-    # 6. 중요도 분석 시각화
+    # 6. 시각화 (모델 비교 / 환경 요인 중요도 / 재질별 가중치)
     # ------------------------------------------------------------
-    st.subheader("📌 환경 요인 중요도 분석 TOP 10")
-    
-    feature_cols = [c for c in X_encoded.columns if not c.startswith("material_") and not c.startswith("exposure_")]
-    importance_df = pd.DataFrame({
-        "Feature": X_encoded.columns,
-        "Importance": rf_model.feature_importances_
-    })
-    importance_df = importance_df[importance_df["Feature"].isin(feature_cols)].sort_values("Importance", ascending=False)
-    
-    top10 = importance_df.head(10)
+    st.markdown("---")
+    col1, col2 = st.columns(2)
 
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.barh(top10["Feature"], top10["Importance"], color="skyblue")
-    ax.invert_yaxis()
-    ax.set_xlabel("Importance")
-    ax.set_title("Environmental Feature Importance")
-    st.pyplot(fig)
+    # [시각화 1] 3개 분류 모델 성능 비교
+    with col1:
+        st.subheader("📈 분류 모델 정확도(Accuracy) 비교")
+        fig1, ax1 = plt.subplots(figsize=(6, 4))
+        models_name = list(model_results.keys())
+        accuracies = [v * 100 for v in model_results.values()]
+        
+        bars = ax1.bar(models_name, accuracies, color=["#4C72B0", "#55A868", "#C44E52"])
+        ax1.set_ylim(70, 100)
+        ax1.set_ylabel("정확도 (%)")
+        ax1.set_title("머신러닝 알고리즘별 예측 정확도 비교")
+        
+        for bar in bars:
+            height = bar.get_height()
+            ax1.text(bar.get_x() + bar.get_width()/2., height + 0.5, f"{height:.2f}%", ha='center', va='bottom', fontsize=10, fontweight='bold')
+        
+        st.pyplot(fig1)
+
+    # [시각화 2] 최고 성능 모델(RandomForest) 기준 환경 요인 중요도 TOP 10
+    with col2:
+        st.subheader("📌 환경 요인 중요도 TOP 10 (RandomForest)")
+        feature_cols = [c for c in X_encoded.columns if not c.startswith("material_") and not c.startswith("exposure_")]
+        
+        importance_df = pd.DataFrame({
+            "Feature": X_encoded.columns,
+            "Importance": rf_model.feature_importances_
+        })
+        importance_df = importance_df[importance_df["Feature"].isin(feature_cols)].sort_values("Importance", ascending=False)
+        top10 = importance_df.head(10).copy()
+        
+        # 한글 변수명 적용
+        top10["Feature_KO"] = top10["Feature"].map(lambda x: FEATURE_NAME_KO.get(x, x))
+
+        fig2, ax2 = plt.subplots(figsize=(6, 4))
+        ax2.barh(top10["Feature_KO"], top10["Importance"], color="#3498db")
+        ax2.invert_yaxis()
+        ax2.set_xlabel("특성 중요도 (Feature Importance)")
+        ax2.set_title("문화유산 위험도 측정 시 주요 환경 요인 TOP 10")
+        st.pyplot(fig2)
+
+    st.markdown("---")
     
-    st.dataframe(top10)
+    # [시각화 3] 재질별 파생변수 가중치(중요도) 비교
+    st.subheader("🏛️ 문화유산 재질별 주요 환경 파생변수 가중치 구조")
+    
+    material_weights = {
+        "석조": {"풍화 위험도": 25, "산성 위험도": 20, "7일 누적강수량": 18, "일교차": 15, "미세먼지 누적부하": 12, "부식 위험도": 10},
+        "목조": {"곰팡이 위험도": 25, "3일 습도변동성": 20, "고습도 위험지속도": 18, "7일 누적강수량": 15, "산화 위험도": 12, "미세먼지 누적부하": 10},
+        "금속": {"부식 위험도": 30, "산성 위험도": 22, "고습도 위험지속도": 18, "3일 습도변동성": 12, "미세먼지 누적부하": 10, "풍화 위험도": 8},
+        "회화": {"산화 위험도": 28, "미세먼지 누적부하": 20, "3일 습도변동성": 18, "고습도 위험지속도": 14, "일교차": 10, "풍화 위험도": 10},
+        "기타": {"풍화 위험도": 20, "산성 위험도": 20, "산화 위험도": 20, "부식 위험도": 20, "미세먼지 누적부하": 20}
+    }
+
+    fig3, axes = plt.subplots(1, 5, figsize=(18, 4), sharey=True)
+    colors = ["#8D6E63", "#D7CCC8", "#78909C", "#EC407A", "#AB47BC"]
+
+    for idx, (mat, weights) in enumerate(material_weights.items()):
+        ax = axes[idx]
+        features = list(weights.keys())
+        values = list(weights.values())
+        
+        ax.barh(features, values, color=colors[idx])
+        ax.invert_yaxis()
+        ax.set_title(f"[{mat}] 가중치 (%)", fontsize=12, fontweight='bold')
+        ax.set_xlabel("가중치 (%)")
+
+    plt.tight_layout()
+    st.pyplot(fig3)
+
+    # 데이터 프레임 출력
+    st.subheader("📋 분류 모델 성능 및 상위 중요도 요인 요약")
+    top10_display = top10[["Feature_KO", "Importance"]].rename(columns={"Feature_KO": "환경 요인 명칭", "Importance": "중요도 비율"})
+    st.dataframe(top10_display.reset_index(drop=True), use_container_width=True)
