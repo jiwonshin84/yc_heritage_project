@@ -165,7 +165,7 @@ except Exception as e:
     print(e)
 
 # ============================================
-# 2. 대기오염 최신 데이터 (기상청 시각 매칭)
+# 2. 대기오염 최신 데이터
 # ============================================
 
 AIR_URL = (
@@ -187,7 +187,7 @@ so2 = "-"
 data_time = "-"
 
 # ============================================
-# 대기오염 API 요청 및 시각 매칭
+# 대기오염 API 요청
 # ============================================
 
 try:
@@ -215,38 +215,34 @@ try:
 
     air_data = air_response.json()
 
+    print(air_data)
+
     items = air_data["response"]["body"]["items"]
 
-    # 영천 측정소 데이터만 필터링
-    yeongcheon_items = [item for item in items if "영천" in item["stationName"]]
-
+    # 영천 측정소 찾기
     target = None
 
-    # 1. 기상청 시각(tm)과 일치하는 대기오염 데이터 검색
-    for item in yeongcheon_items:
-        if item.get("dataTime") == tm:
+    for item in items:
+
+        if "영천" in item["stationName"]:
             target = item
             break
-
-    # 2. 만약 기상청 시각과 딱 일치하는 데이터가 없다면 가장 최근 영천 데이터 사용
-    if not target and yeongcheon_items:
-        target = yeongcheon_items[0]
 
     if target:
 
         data_time = target["dataTime"]
 
-        pm10 = target.get("pm10Value", "-")
-        pm25 = target.get("pm25Value", "-")
+        pm10 = target["pm10Value"]
+        pm25 = target["pm25Value"]
 
-        o3 = target.get("o3Value", "-")
-        no2 = target.get("no2Value", "-")
+        o3 = target["o3Value"]
+        no2 = target["no2Value"]
 
-        co = target.get("coValue", "-")
-        so2 = target.get("so2Value", "-")
+        co = target["coValue"]
+        so2 = target["so2Value"]
 
         print()
-        print("===== 최신 대기오염 데이터 (시각 매칭 적용) =====")
+        print("===== 최신 대기오염 데이터 =====")
 
         print("측정시각:", data_time)
 
@@ -512,7 +508,7 @@ with right:
 <div>
 - 
 </div>
-
+                    
 </div>
         """,
         unsafe_allow_html=True
