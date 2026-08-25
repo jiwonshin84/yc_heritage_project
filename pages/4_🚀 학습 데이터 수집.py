@@ -61,13 +61,13 @@ def fetch_asos_year(year):
 def get_season(month):
     """월 정보를 바탕으로 계절 파악"""
     if month in [3, 4, 5]:
-        return "봄 (3~5월)"
+        return "1. 봄 (3~5월)"
     elif month in [6, 7, 8]:
-        return "여름 (6~8월)"
+        return "2. 여름 (6~8월)"
     elif month in [9, 10, 11]:
-        return "가을 (9~11월)"
+        return "3. 가을 (9~11월)"
     else:
-        return "겨울 (12~2월)"
+        return "4. 겨울 (12~2월)"
 
 
 def collect_and_process_data():
@@ -237,10 +237,10 @@ if df is not None:
             title="📅 연도별 계절 평균 기온 추이",
             labels={"temp_avg": "평균 기온 (°C)", "year": "연도", "season": "계절"},
             color_discrete_map={
-                "봄 (3~5월)": "#51CF66",
-                "여름 (6~8월)": "#FF6B6B",
-                "가을 (9~11월)": "#FCC419",
-                "겨울 (12~2월)": "#339AF0",
+                "1. 봄 (3~5월)": "#51CF66",
+                "2. 여름 (6~8월)": "#FF6B6B",
+                "3. 가을 (9~11월)": "#FCC419",
+                "4. 겨울 (12~2월)": "#339AF0",
             },
         )
         fig_season_trend.update_layout(
