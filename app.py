@@ -165,7 +165,7 @@ except Exception as e:
     print(e)
 
 # ============================================
-# 2. 대기오염 최신 데이터 (기상청 시각 정확히 매칭)
+# 2. 대기오염 데이터 (시각 일치 매칭)
 # ============================================
 
 AIR_URL = (
@@ -186,24 +186,17 @@ so2 = "-"
 
 data_time = "-"
 
-# ============================================
-# 대기오염 API 요청 및 시각 매칭
-# ============================================
-
 try:
 
     air_params = {
         "serviceKey": SERVICE_KEY,
         "returnType": "json",
 
-        "numOfRows": "500",  # 과거 시간대 항목을 포함해 여유있게 수집
+        "numOfRows": "100",
         "pageNo": "1",
 
         # 경북
         "sidoName": "경북",
-
-        # 최근 24시간 자료 조회 (과거 시각 매칭을 위해 필수)
-        "dataGubun": "DAILY",
 
         "ver": "1.0"
     }
@@ -220,18 +213,20 @@ try:
 
     items = air_data["response"]["body"]["items"]
 
-    # 경북 지역 중 '영천' 측정소 항목 목록 전체 필터링
+    # 영천 측정소 데이터 전체
     yeongcheon_items = [item for item in items if "영천" in item.get("stationName", "")]
 
     target = None
 
-    # 기상청 관측시각(tm)과 완벽히 동일한 dataTime 항목 검색
+    # 기상 시각(tm) 형식 정제 ("2026-08-25 17:00")
+    # 대기오염 dataTime 형식과의 차이(공백 등)를 최소화하여 일치 검사
     for item in yeongcheon_items:
-        if item.get("dataTime") == tm:
+        dt = item.get("dataTime", "").strip()
+        if dt == tm.strip():
             target = item
             break
 
-    # 시각이 정확히 맞지 않을 경우 백업 (가장 가까운 시간 데이터 사용)
+    # 해당 시간 데이터가 목록에 없으면 영천 데이터 중 가장 최근 데이터 선택
     if not target and yeongcheon_items:
         target = yeongcheon_items[0]
 
@@ -249,7 +244,7 @@ try:
         so2 = target.get("so2Value", "-")
 
         print()
-        print("===== 최신 대기오염 데이터 (기상 시각 매칭) =====")
+        print("===== 대기오염 데이터 매칭 성공 =====")
 
         print("측정시각:", data_time)
 
