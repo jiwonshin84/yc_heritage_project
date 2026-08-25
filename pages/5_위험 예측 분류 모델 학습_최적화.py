@@ -15,44 +15,13 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import streamlit as st
 
-st.set_page_config(page_title="데이터 수집 및 중요도 분석", layout="wide")
-st.title("📊 위험 예측 분류 모델 / 재질별 중요도 분석")
+st.set_page_config(
+    page_title="문화유산 위험 예측 현황 분석", layout="wide"
+)
+st.title("📊 문화유산 위험 예측 및 재질별 현황 분석")
 
 # ------------------------------------------------------------
-# 1. 사이드바 설정 (사용자 인터랙티브 파라미터)
-# ------------------------------------------------------------
-st.sidebar.header("⚙️ 모델 설정 및 하이퍼파라미터")
-
-test_size = st.sidebar.slider(
-    "테스트 데이터 비율 (test_size)",
-    min_value=0.1,
-    max_value=0.5,
-    value=0.2,
-    step=0.05,
-)
-
-rf_n_estimators = st.sidebar.slider(
-    "RandomForest 트리 개수 (n_estimators)",
-    min_value=10,
-    max_value=300,
-    value=100,
-    step=10,
-)
-
-gb_max_iter = st.sidebar.slider(
-    "HistGradientBoosting 반복 횟수 (max_iter)",
-    min_value=10,
-    max_value=300,
-    value=100,
-    step=10,
-)
-
-random_state = st.sidebar.number_input(
-    "난수 고정 값 (random_state)", min_value=0, max_value=9999, value=42
-)
-
-# ------------------------------------------------------------
-# 2. 기본 설정 및 한글 변수명 매핑 사전
+# 1. 기본 설정 및 한글 변수명 매핑 사전
 # ------------------------------------------------------------
 DATA_PATH = "data/processed/[2016_2025] yeongcheon.csv"
 
@@ -85,12 +54,10 @@ FEATURE_NAME_KO = {
 
 
 # ------------------------------------------------------------
-# 3. 데이터 전처리 및 모델 학습 파이프라인 (파라미터 수용)
+# 2. 데이터 전처리 및 최적화된 백엔드 파이프라인
 # ------------------------------------------------------------
 @st.cache_resource
-def run_model_pipeline(
-    test_size_val, rf_n_estimators_val, gb_max_iter_val, random_state_val
-):
+def run_model_pipeline():
     try:
         df = pd.read_csv(DATA_PATH)
     except Exception as e:
@@ -102,7 +69,6 @@ def run_model_pipeline(
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
         df = df.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
 
-    # 결측치 보완 및 기본 수치형 타입 보장
     if "rainfall" in df.columns:
         df["rainfall"] = df["rainfall"].fillna(0)
 
@@ -137,7 +103,7 @@ def run_model_pipeline(
     comb["key"] = 1
     dataset = pd.merge(df, comb, on="key").drop("key", axis=1)
 
-    # 정규화 (MinMax)
+    # MinMax 정규화
     risk_cols = [
         "weathering_risk",
         "acid_risk",
@@ -213,9 +179,8 @@ def run_model_pipeline(
     # Target 라벨링
     conditions = [dataset["material_risk"] >= 80, dataset["material_risk"] >= 40]
     dataset["target"] = np.select(conditions, ["위험", "주의"], default="안전")
-    dataset.to_csv("processed_dataset.csv", index=False, encoding="utf-8-sig")
 
-    # 머신러닝 모델 학습
+    # 머신러닝 모델 학습 (백엔드 고정 하이퍼파라미터 적용)
     X = dataset[[
         "temp_avg",
         "temp_max",
@@ -247,23 +212,12 @@ def run_model_pipeline(
     y = dataset["target"]
     X_encoded = pd.get_dummies(X, columns=["material", "exposure"])
 
-    # 전달받은 파라미터 적용
     X_train, X_test, y_train, y_test = train_test_split(
-        X_encoded,
-        y,
-        test_size=test_size_val,
-        random_state=random_state_val,
-        stratify=y,
+        X_encoded, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    rf_model = RandomForestClassifier(
-        n_estimators=rf_n_estimators_val,
-        random_state=random_state_val,
-        n_jobs=-1,
-    )
-    gb_model = HistGradientBoostingClassifier(
-        max_iter=gb_max_iter_val, random_state=random_state_val
-    )
+    rf_model = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
+    gb_model = HistGradientBoostingClassifier(max_iter=100, random_state=42)
     lr_model = LogisticRegression(max_iter=1000, solver="lbfgs")
 
     rf_model.fit(X_train, y_train)
@@ -284,63 +238,87 @@ def run_model_pipeline(
         "LogisticRegression": acc_lr,
     }
 
-    joblib.dump(rf_model, "best_rf_model.pkl")
-    joblib.dump(X_encoded.columns.tolist(), "model_features.pkl")
-
-    return model_results, rf_model, X_encoded
+    return dataset, model_results, rf_model, X_encoded
 
 
 # ------------------------------------------------------------
-# 4. 파이프라인 실행
+# 3. 데이터 로드
 # ------------------------------------------------------------
-with st.spinner("🚀 설정값으로 모델을 예측 및 학습 중입니다..."):
-    model_results, rf_model, X_encoded = run_model_pipeline(
-        test_size, rf_n_estimators, gb_max_iter, random_state
-    )
-
-st.success("✅ 선택한 하이퍼파라미터 기반 분석이 완료되었습니다!")
+with st.spinner("🚀 분석 데이터를 로드하고 예측 모델을 준비 중입니다..."):
+    dataset, model_results, rf_model, X_encoded = run_model_pipeline()
 
 # ------------------------------------------------------------
-# 5. 시각화 (Plotly)
+# 4. 사이드바: 도메인 중심 필터 구성
 # ------------------------------------------------------------
+st.sidebar.header("🔍 문화유산 조건 필터")
+
+selected_material = st.sidebar.selectbox(
+    "🏛️ 문화유산 재질 선택",
+    options=["전체"] + list(dataset["material"].unique()),
+    index=0,
+)
+
+selected_exposure = st.sidebar.selectbox(
+    "🌿 노출 환경 선택",
+    options=["전체"] + list(dataset["exposure"].unique()),
+    index=0,
+)
+
+# 필터링 적용
+filtered_df = dataset.copy()
+if selected_material != "전체":
+    filtered_df = filtered_df[filtered_df["material"] == selected_material]
+if selected_exposure != "전체":
+    filtered_df = filtered_df[filtered_df["exposure"] == selected_exposure]
+
+# ------------------------------------------------------------
+# 5. 핵심 지표 메트릭 카드 (Dashboard KPI)
+# ------------------------------------------------------------
+st.markdown(f"### 📌 [{selected_material}] / [{selected_exposure}] 위험 예측 현황 Summary")
+
+kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+
+total_count = len(filtered_df)
+danger_count = (filtered_df["target"] == "위험").sum()
+caution_count = (filtered_df["target"] == "주의").sum()
+safe_count = (filtered_df["target"] == "안전").sum()
+
+kpi1.metric("총 분석 데이터 수", f"{total_count:,} 건")
+kpi2.metric("🚨 위험 등급 비율", f"{(danger_count / total_count * 100):.1f}%", f"{danger_count:,} 건")
+kpi3.metric("⚠️ 주의 등급 비율", f"{(caution_count / total_count * 100):.1f}%", f"{caution_count:,} 건")
+kpi4.metric("✅ 안전 등급 비율", f"{(safe_count / total_count * 100):.1f}%", f"{safe_count:,} 건")
+
 st.markdown("---")
+
+# ------------------------------------------------------------
+# 6. 메인 분석 시각화
+# ------------------------------------------------------------
 col1, col2 = st.columns(2)
 
-# [시각화 1] 3개 분류 모델 성능 비교
+# [시각화 1] 선택 조건 기준 위험 등급 분포 (Pie Chart)
 with col1:
-    st.subheader("📈 분류 모델 정확도(Accuracy) 비교")
-    df_models = pd.DataFrame({
-        "Model": list(model_results.keys()),
-        "Accuracy": [v * 100 for v in model_results.values()],
-    })
+    st.subheader("🎯 위험 예측 등급 분포")
+    target_counts = filtered_df["target"].value_counts().reset_index()
+    target_counts.columns = ["Target", "Count"]
 
-    fig1 = px.bar(
-        df_models,
-        x="Model",
-        y="Accuracy",
-        color="Model",
-        color_discrete_sequence=["#4C72B0", "#55A868", "#C44E52"],
-        title="머신러닝 알고리즘별 예측 정확도 비교",
+    fig1 = px.pie(
+        target_counts,
+        names="Target",
+        values="Count",
+        color="Target",
+        color_discrete_map={"위험": "#E74C3C", "주의": "#F39C12", "안전": "#2ECC71"},
+        hole=0.4,
+        title=f"선택 조건 내 위험도 분포 비율",
     )
-    fig1.update_traces(texttemplate="%{y:.2f}%", textposition="outside")
-    fig1.update_layout(
-        yaxis_range=[70, 100],
-        yaxis_title="정확도 (%)",
-        xaxis_title="",
-        showlegend=False,
-        height=400,
-        margin=dict(t=50, b=20, l=10, r=10),
-    )
+    fig1.update_traces(textinfo="percent+label")
+    fig1.update_layout(height=380, margin=dict(t=40, b=20, l=10, r=10))
     st.plotly_chart(fig1, use_container_width=True)
 
-# [시각화 2] 최고 성능 모델 기준 환경 요인 중요도 TOP 10
+# [시각화 2] 주요 환경 위험 요인 TOP 10 (Feature Importance)
 with col2:
-    st.subheader(
-        f"📌 환경 요인 중요도 TOP 10 (RandomForest: n={rf_n_estimators})"
-    )
+    st.subheader("📌 주요 영향 환경 요인 TOP 10")
     feature_cols = [
-        c
-        for c in X_encoded.columns
+        c for c in X_encoded.columns
         if not c.startswith("material_") and not c.startswith("exposure_")
     ]
 
@@ -348,14 +326,11 @@ with col2:
         "Feature": X_encoded.columns,
         "Importance": rf_model.feature_importances_,
     })
-    importance_df = importance_df[
-        importance_df["Feature"].isin(feature_cols)
-    ].sort_values("Importance", ascending=False)
-    top10 = importance_df.head(10).copy()
-
-    top10["Feature_KO"] = top10["Feature"].map(
-        lambda x: FEATURE_NAME_KO.get(x, x)
+    importance_df = importance_df[importance_df["Feature"].isin(feature_cols)].sort_values(
+        "Importance", ascending=False
     )
+    top10 = importance_df.head(10).copy()
+    top10["Feature_KO"] = top10["Feature"].map(lambda x: FEATURE_NAME_KO.get(x, x))
     top10_sorted = top10.sort_values("Importance", ascending=True)
 
     fig2 = px.bar(
@@ -363,14 +338,14 @@ with col2:
         x="Importance",
         y="Feature_KO",
         orientation="h",
-        title="문화유산 위험도 측정 시 주요 환경 요인 TOP 10",
         color_discrete_sequence=["#3498db"],
+        title="위험도 판단 시 기여도가 높은 요인",
     )
     fig2.update_layout(
-        xaxis_title="특성 중요도 (Feature Importance)",
+        xaxis_title="기여도 (Importance)",
         yaxis_title="",
-        height=400,
-        margin=dict(t=50, b=20, l=10, r=10),
+        height=380,
+        margin=dict(t=40, b=20, l=10, r=10),
     )
     st.plotly_chart(fig2, use_container_width=True)
 
@@ -380,57 +355,21 @@ st.markdown("---")
 st.subheader("🏛️ 문화유산 재질별 주요 환경 파생변수 가중치 구조")
 
 material_weights = {
-    "석조": {
-        "풍화 위험도": 25,
-        "산성 위험도": 20,
-        "7일 누적강수량": 18,
-        "일교차": 15,
-        "미세먼지 누적부하": 12,
-        "부식 위험도": 10,
-    },
-    "목조": {
-        "곰팡이 위험도": 25,
-        "3일 습도변동성": 20,
-        "고습도 위험지속도": 18,
-        "7일 누적강수량": 15,
-        "산화 위험도": 12,
-        "미세먼지 누적부하": 10,
-    },
-    "금속": {
-        "부식 위험도": 30,
-        "산성 위험도": 22,
-        "고습도 위험지속도": 18,
-        "3일 습도변동성": 12,
-        "미세먼지 누적부하": 10,
-        "풍화 위험도": 8,
-    },
-    "회화": {
-        "산화 위험도": 28,
-        "미세먼지 누적부하": 20,
-        "3일 습도변동성": 18,
-        "고습도 위험지속도": 14,
-        "일교차": 10,
-        "풍화 위험도": 10,
-    },
-    "기타": {
-        "풍화 위험도": 20,
-        "산성 위험도": 20,
-        "산화 위험도": 20,
-        "부식 위험도": 20,
-        "미세먼지 누적부하": 20,
-    },
+    "석조": {"풍화 위험도": 25, "산성 위험도": 20, "7일 누적강수량": 18, "일교차": 15, "미세먼지 누적부하": 12, "부식 위험도": 10},
+    "목조": {"곰팡이 위험도": 25, "3일 습도변동성": 20, "고습도 위험지속도": 18, "7일 누적강수량": 15, "산화 위험도": 12, "미세먼지 누적부하": 10},
+    "금속": {"부식 위험도": 30, "산성 위험도": 22, "고습도 위험지속도": 18, "3일 습도변동성": 12, "미세먼지 누적부하": 10, "풍화 위험도": 8},
+    "회화": {"산화 위험도": 28, "미세먼지 누적부하": 20, "3일 습도변동성": 18, "고습도 위험지속도": 14, "일교차": 10, "풍화 위험도": 10},
+    "기타": {"풍화 위험도": 20, "산성 위험도": 20, "산화 위험도": 20, "부식 위험도": 20, "미세먼지 누적부하": 20},
 }
 
 fig3 = make_subplots(
-    rows=1,
-    cols=5,
-    subplot_titles=[f"[{mat}] 가중치 (%)" for mat in material_weights.keys()],
+    rows=1, cols=5,
+    subplot_titles=[f"[{mat}] 가중치 (%)" for mat in material_weights.keys()]
 )
 colors = ["#8D6E63", "#D7CCC8", "#78909C", "#EC407A", "#AB47BC"]
 
 for idx, (mat, weights) in enumerate(material_weights.items()):
     sorted_weights = dict(sorted(weights.items(), key=lambda item: item[1]))
-
     fig3.add_trace(
         go.Bar(
             x=list(sorted_weights.values()),
@@ -439,16 +378,31 @@ for idx, (mat, weights) in enumerate(material_weights.items()):
             marker_color=colors[idx],
             showlegend=False,
         ),
-        row=1,
-        col=idx + 1,
+        row=1, col=idx + 1,
     )
 
-fig3.update_layout(height=450, margin=dict(t=50, b=30, l=10, r=10))
+fig3.update_layout(height=420, margin=dict(t=50, b=30, l=10, r=10))
 st.plotly_chart(fig3, use_container_width=True)
 
-# 요약 데이터프레임 출력
-st.subheader("📋 분류 모델 상위 중요도 요인 요약")
-top10_display = top10[["Feature_KO", "Importance"]].rename(
-    columns={"Feature_KO": "환경 요인 명칭", "Importance": "중요도 비율"}
-)
-st.dataframe(top10_display.reset_index(drop=True), use_container_width=True)
+# ------------------------------------------------------------
+# 7. 필터링된 데이터 표 출력 및 다운로드
+# ------------------------------------------------------------
+st.subheader("📋 선택 조건 위험 예측 데이터 상세 목록")
+
+display_cols = ["date", "material", "exposure", "material_risk", "target", "temp_avg", "humidity", "pm10", "pm25"]
+cols_present = [c for c in display_cols if c in filtered_df.columns]
+
+output_df = filtered_df[cols_present].copy()
+output_df = output_df.rename(columns={
+    "date": "날짜",
+    "material": "재질",
+    "exposure": "노출 환경",
+    "material_risk": "위험도 점수",
+    "target": "위험 등급",
+    "temp_avg": "평균 기온(℃)",
+    "humidity": "습도(%)",
+    "pm10": "PM10",
+    "pm25": "PM2.5",
+})
+
+st.dataframe(output_df.reset_index(drop=True), use_container_width=True, height=300)
