@@ -322,7 +322,7 @@ with col2:
 st.markdown("---")
 
 # ------------------------------------------------------------
-# 3. [개선] 재질별 환경 가중치 시각화 (Radar & Dynamic Bar)
+# 7. 재질별 환경 가중치 시각화 (가로형 버튼 칩 선택 방식 적용)
 # ------------------------------------------------------------
 st.subheader("🏛️ 문화유산 재질별 환경 위험 가중치 구조 분석")
 
@@ -334,9 +334,16 @@ material_weights = {
     "기타": {"풍화 위험도": 20, "산성 위험도": 20, "7일 강수량": 0, "일교차": 0, "미세먼지 부하": 20, "부식 위험도": 20, "곰팡이 위험도": 0, "습도 변동성": 0, "고습도 지속": 0, "산화 위험도": 20},
 }
 
-tab1, tab2 = st.tabs(["🎯 방사형 레이더 프로필 비교", "📊 재질별 상세 가중치"])
+# 차트 상단에 독립 구성한 가로형 버튼 칩 (st.radio horizontal)
+chart_material = st.radio(
+    "🔍 분석할 재질 선택:",
+    options=["전체(레이더 비교)"] + list(material_weights.keys()),
+    horizontal=True,
+    key="chart_material_selector",
+)
 
-with tab1:
+if chart_material == "전체(레이더 비교)":
+    # 전체 선택 시: 방사형 레이더 차트로 다중 비교
     fig_radar = go.Figure()
     categories = list(next(iter(material_weights.values())).keys())
     color_map = {
@@ -347,15 +354,7 @@ with tab1:
         "기타": "#AB47BC",
     }
 
-    # 사이드바에서 재질 선택 시 해당 레이더 영역 강조
-    target_materials = (
-        [selected_material]
-        if selected_material in material_weights
-        else list(material_weights.keys())
-    )
-
-    for mat in target_materials:
-        weights = material_weights[mat]
+    for mat, weights in material_weights.items():
         r_values = [weights[cat] for cat in categories]
         r_values.append(r_values[0])  # 폐곡선 닫기
 
@@ -366,7 +365,7 @@ with tab1:
                 fill="toself",
                 name=mat,
                 line_color=color_map.get(mat, "#3498db"),
-                opacity=0.5 if len(target_materials) > 1 else 0.75,
+                opacity=0.4,
             )
         )
 
@@ -380,13 +379,9 @@ with tab1:
     )
     st.plotly_chart(fig_radar, use_container_width=True)
 
-with tab2:
-    # 필터 선택에 따른 가중치 시각화
-    display_mat = selected_material if selected_material in material_weights else "석조"
-    if selected_material == "전체":
-        st.info("💡 사이드바에서 특정 재질을 선택하시면 해당 재질의 세부 가중치를 확인하실 수 있습니다. (현재: 석조 기준 예시)")
-
-    mat_dict = material_weights[display_mat]
+else:
+    # 개별 재질 선택 시: 해당 재질의 단일 수평 막대 그래프
+    mat_dict = material_weights[chart_material]
     non_zero_weights = {k: v for k, v in mat_dict.items() if v > 0}
     sorted_weights = pd.DataFrame(
         list(non_zero_weights.items()), columns=["환경 파생변수", "가중치(%)"]
@@ -400,16 +395,16 @@ with tab2:
         text="가중치(%)",
         color="가중치(%)",
         color_continuous_scale="Purples",
-        title=f"[{display_mat}] 핵심 관리 환경 위험요인 가중치 비중",
+        title=f"[{chart_material}] 핵심 관리 환경 위험요인 가중치 비중",
     )
     fig_bar.update_traces(texttemplate="%{text}%", textposition="outside")
-    fig_bar.update_layout(height=350, margin=dict(t=40, b=20, l=10, r=10))
+    fig_bar.update_layout(height=380, margin=dict(t=40, b=20, l=10, r=10))
     st.plotly_chart(fig_bar, use_container_width=True)
 
 st.markdown("---")
 
 # ------------------------------------------------------------
-# 7. 필터링된 데이터 표 출력
+# 8. 필터링된 데이터 표 출력
 # ------------------------------------------------------------
 st.subheader("📋 선택 조건 위험 예측 데이터 상세 목록")
 
