@@ -50,7 +50,7 @@ NY = "106"
 # 최근 발표 시각
 api_date, api_time, display_date = get_latest_base_time()
 
-# 기본값
+# 기본값 (예: "2026-08-25 17:00")
 tm = f"{display_date} {api_time[:2]}:00"
 
 temp = "-"
@@ -165,7 +165,7 @@ except Exception as e:
     print(e)
 
 # ============================================
-# 2. 대기오염 최신 데이터
+# 2. 대기오염 최신 데이터 (기상청 측정 시각 매칭)
 # ============================================
 
 AIR_URL = (
@@ -187,7 +187,7 @@ so2 = "-"
 data_time = "-"
 
 # ============================================
-# 대기오염 API 요청
+# 대기오염 API 요청 및 기상 시각 매칭
 # ============================================
 
 try:
@@ -215,34 +215,38 @@ try:
 
     air_data = air_response.json()
 
-    print(air_data)
-
     items = air_data["response"]["body"]["items"]
 
-    # 영천 측정소 찾기
+    # 경북 지역 중 '영천' 측정소 항목 추출
+    yeongcheon_items = [item for item in items if "영천" in item.get("stationName", "")]
+
     target = None
 
-    for item in items:
-
-        if "영천" in item["stationName"]:
+    # 기상청 관측시각(tm)과 동일한 dataTime 항목 조회
+    for item in yeongcheon_items:
+        if item.get("dataTime") == tm:
             target = item
             break
 
+    # 해당 시각 데이터가 없을 경우 가장 최근의 영천 데이터로 백업
+    if not target and yeongcheon_items:
+        target = yeongcheon_items[0]
+
     if target:
 
-        data_time = target["dataTime"]
+        data_time = target.get("dataTime", "-")
 
-        pm10 = target["pm10Value"]
-        pm25 = target["pm25Value"]
+        pm10 = target.get("pm10Value", "-")
+        pm25 = target.get("pm25Value", "-")
 
-        o3 = target["o3Value"]
-        no2 = target["no2Value"]
+        o3 = target.get("o3Value", "-")
+        no2 = target.get("no2Value", "-")
 
-        co = target["coValue"]
-        so2 = target["so2Value"]
+        co = target.get("coValue", "-")
+        so2 = target.get("so2Value", "-")
 
         print()
-        print("===== 최신 대기오염 데이터 =====")
+        print("===== 최신 대기오염 데이터 (기상 시각 매칭) =====")
 
         print("측정시각:", data_time)
 
@@ -508,7 +512,7 @@ with right:
 <div>
 - 
 </div>
-                    
+
 </div>
         """,
         unsafe_allow_html=True
