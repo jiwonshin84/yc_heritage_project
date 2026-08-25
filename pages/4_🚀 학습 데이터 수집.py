@@ -158,116 +158,83 @@ if df is not None:
   kpi5.metric("평균 PM2.5", f"{df['pm25'].mean():.1f} ㎛/㎥")
 
   # ------------------------------------------------------------
-  # 5. 데이터 시각화 차트
-  # ------------------------------------------------------------
-  st.markdown("---")
-  tab1, tab2, tab3 = st.tabs([
-      "🌡️ 기온 & 습도 추이",
-      "🌫️ 미세먼지(PM10/PM2.5) 동향",
-      "🌧️ 월별 강수량 & 일사량 분석",
-  ])
-
-  # [탭 1] 기온 및 습도 월별 트렌드
-  with tab1:
-    st.subheader("연도/월별 기온 및 습도 변화")
-    df_monthly = (
-        df.set_index("date")
-        .resample("ME")
-        .agg({
-            "temp_avg": "mean",
-            "temp_max": "max",
-            "temp_min": "min",
-            "humidity": "mean",
-        })
-        .reset_index()
+    # 5. 데이터 시각화 차트 (사이드바 선택 / 그리드 방식)
+    # ------------------------------------------------------------
+    st.markdown("---")
+    
+    # 사이드바에서 분석 모드 선택
+    st.sidebar.header("📊 시각화 옵션")
+    view_option = st.sidebar.radio(
+        "차트 보기 방식을 선택하세요:",
+        ["전체 한눈에 보기 (그리드)", "🌡️ 기온 & 습도 추이", "🌫️ 미세먼지 동향", "🌧️ 강수량 & 일사량 분석"]
     )
-
-    fig_temp = make_subplots(specs=[[{"secondary_y": True}]])
-    fig_temp.add_trace(
-        go.Scatter(
-            x=df_monthly["date"],
-            y=df_monthly["temp_avg"],
-            name="평균 기온 (°C)",
-            line=dict(color="#FF4B4B", width=2),
-        ),
-        secondary_y=False,
-    )
-    fig_temp.add_trace(
-        go.Scatter(
-            x=df_monthly["date"],
-            y=df_monthly["humidity"],
-            name="평균 습도 (%)",
-            line=dict(color="#0068C9", width=1.5, dash="dot"),
-        ),
-        secondary_y=True,
-    )
-
-    fig_temp.update_layout(
-        title="월평균 기온 및 습도 추이",
-        xaxis_title="날짜",
-        height=450,
-        hovermode="x unified",
-    )
-    fig_temp.update_yaxes(title_text="기온 (°C)", secondary_y=False)
-    fig_temp.update_yaxes(title_text="습도 (%)", secondary_y=True)
-    st.plotly_chart(fig_temp, use_container_width=True)
-
-  # [탭 2] 미세먼지 동향 분석
-  with tab2:
-    st.subheader("연도별 미세먼지(PM10, PM2.5) 평균 농도")
-    df["year"] = df["date"].dt.year
-    df_air_yearly = df.groupby("year")[["pm10", "pm25"]].mean().reset_index()
-
-    fig_air = px.bar(
-        df_air_yearly,
-        x="year",
-        y=["pm10", "pm25"],
-        barmode="group",
-        labels={"value": "농도 (㎛/㎥)", "year": "연도", "variable": "구분"},
-        color_discrete_map={"pm10": "#FFAA00", "pm25": "#FF4444"},
-        title="연도별 미세먼지 및 초미세먼지 평균 변화",
-    )
-    fig_air.update_layout(height=450, xaxis=dict(type="category"))
-    st.plotly_chart(fig_air, use_container_width=True)
-
-  # [탭 3] 월별 강수량 및 일사량
-  with tab3:
-    st.subheader("월별 누적 강수량 및 평균 일사량 분포")
-    df["month"] = df["date"].dt.month
-    df_month_agg = (
-        df.groupby("month")
-        .agg({"rainfall": "sum", "solar_radiation": "mean"})
-        .reset_index()
-    )
-
-    fig_rain = make_subplots(specs=[[{"secondary_y": True}]])
-    fig_rain.add_trace(
-        go.Bar(
-            x=df_month_agg["month"],
-            y=df_month_agg["rainfall"],
-            name="총 강수량 (mm)",
-            marker_color="#29B6F6",
-        ),
-        secondary_y=False,
-    )
-    fig_rain.add_trace(
-        go.Scatter(
-            x=df_month_agg["month"],
-            y=df_month_agg["solar_radiation"],
-            name="평균 일사량 (MJ/㎡)",
-            line=dict(color="#FFA726", width=3),
-        ),
-        secondary_y=True,
-    )
-    fig_rain.update_layout(
-        title="10년간 월별 통계 (강수량 합계 vs 일사량 평균)",
-        xaxis=dict(tickmode="linear", tick0=1, dtick=1, title="월(Month)"),
-        height=450,
-    )
-    fig_rain.update_yaxes(title_text="강수량 (mm)", secondary_y=False)
-    fig_rain.update_yaxes(title_text="일사량 (MJ/㎡)", secondary_y=True)
-    st.plotly_chart(fig_rain, use_container_width=True)
-
+    
+    # 차트 생성 함수 분리
+    def render_temp_chart():
+        df_monthly = (
+            df.set_index("date")
+            .resample("ME")
+            .agg({"temp_avg": "mean", "temp_max": "max", "temp_min": "min", "humidity": "mean"})
+            .reset_index()
+        )
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+        fig.add_trace(go.Scatter(x=df_monthly["date"], y=df_monthly["temp_avg"], name="평균 기온 (°C)", line=dict(color="#FF4B4B", width=2)), secondary_y=False)
+        fig.add_trace(go.Scatter(x=df_monthly["date"], y=df_monthly["humidity"], name="평균 습도 (%)", line=dict(color="#0068C9", width=1.5, dash="dot")), secondary_y=True)
+        fig.update_layout(title="월평균 기온 및 습도 추이", xaxis_title="날짜", height=400, hovermode="x unified")
+        fig.update_yaxes(title_text="기온 (°C)", secondary_y=False)
+        fig.update_yaxes(title_text="습도 (%)", secondary_y=True)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    def render_air_chart():
+        df["year"] = df["date"].dt.year
+        df_air_yearly = df.groupby("year")[["pm10", "pm25"]].mean().reset_index()
+        fig = px.bar(
+            df_air_yearly, x="year", y=["pm10", "pm25"], barmode="group",
+            labels={"value": "농도 (㎛/㎥)", "year": "연도", "variable": "구분"},
+            color_discrete_map={"pm10": "#FFAA00", "pm25": "#FF4444"},
+            title="연도별 미세먼지 및 초미세먼지 평균 변화"
+        )
+        fig.update_layout(height=400, xaxis=dict(type="category"))
+        st.plotly_chart(fig, use_container_width=True)
+    
+    def render_rain_chart():
+        df["month"] = df["date"].dt.month
+        df_month_agg = df.groupby("month").agg({"rainfall": "sum", "solar_radiation": "mean"}).reset_index()
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+        fig.add_trace(go.Bar(x=df_month_agg["month"], y=df_month_agg["rainfall"], name="총 강수량 (mm)", marker_color="#29B6F6"), secondary_y=False)
+        fig.add_trace(go.Scatter(x=df_month_agg["month"], y=df_month_agg["solar_radiation"], name="평균 일사량 (MJ/㎡)", line=dict(color="#FFA726", width=3)), secondary_y=True)
+        fig.update_layout(
+            title="10년간 월별 통계 (강수량 합계 vs 일사량 평균)",
+            xaxis=dict(tickmode="linear", tick0=1, dtick=1, title="월(Month)"), height=400
+        )
+        fig.update_yaxes(title_text="강수량 (mm)", secondary_y=False)
+        fig.update_yaxes(title_text="일사량 (MJ/㎡)", secondary_y=True)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # 레이아웃 조건부 출력
+    if view_option == "전체 한눈에 보기 (그리드)":
+        st.subheader("📈 종합 데이터 분석 대시보드")
+        col1, col2 = st.columns(2)
+        with col1:
+            render_temp_chart()
+        with col2:
+            render_air_chart()
+        
+        st.markdown("---")
+        render_rain_chart()
+    
+    elif view_option == "🌡️ 기온 & 습도 추이":
+        st.subheader("🌡️ 연도/월별 기온 및 습도 변화")
+        render_temp_chart()
+    
+    elif view_option == "🌫️ 미세먼지 동향":
+        st.subheader("🌫️ 연도별 미세먼지(PM10, PM2.5) 평균 농도")
+        render_air_chart()
+    
+    elif view_option == "🌧️ 강수량 & 일사량 분석":
+        st.subheader("🌧️ 월별 누적 강수량 및 평균 일사량 분포")
+        render_rain_chart()
+    
   # ------------------------------------------------------------
   # 6. 수집 데이터 미리보기
   # ------------------------------------------------------------
