@@ -237,10 +237,10 @@ if df is not None:
             title="📅 연도별 계절 평균 기온 추이",
             labels={"temp_avg": "평균 기온 (°C)", "year": "연도", "season": "계절"},
             color_discrete_map={
-                "1. 봄 (3~5월)": "#51CF66",
-                "2. 여름 (6~8월)": "#FF6B6B",
-                "3. 가을 (9~11월)": "#FCC419",
-                "4. 겨울 (12~2월)": "#339AF0",
+                "봄 (3~5월)": "#51CF66",
+                "여름 (6~8월)": "#FF6B6B",
+                "가을 (9~11월)": "#FCC419",
+                "겨울 (12~2월)": "#339AF0",
             },
         )
         fig_season_trend.update_layout(
