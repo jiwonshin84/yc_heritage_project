@@ -475,7 +475,7 @@ merged_curr = pd.merge(
     w_df_curr,
     a_df_curr,
     on="date",
-    how="inner"
+    how="left"
 )
 
 if merged_curr.empty:
