@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from sklearn.ensemble import (
     HistGradientBoostingClassifier,
     RandomForestClassifier,
@@ -15,9 +14,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import streamlit as st
 
-st.set_page_config(
-    page_title="문화유산 위험 예측 현황 분석", layout="wide"
-)
+st.set_page_config(page_title="문화유산 위험 예측 현황 분석", layout="wide")
 st.title("📊 문화유산 위험 예측 및 재질별 현황 분석")
 
 # ------------------------------------------------------------
@@ -64,7 +61,6 @@ def run_model_pipeline():
         st.error(f"데이터 파일 로드 실패: {e}")
         st.stop()
 
-    # 날짜 타입 변환 및 정렬
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
         df = df.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
@@ -72,7 +68,7 @@ def run_model_pipeline():
     if "rainfall" in df.columns:
         df["rainfall"] = df["rainfall"].fillna(0)
 
-    # 파생변수 생성 (벡터화)
+    # 파생변수 생성
     df["temp_range"] = df["temp_max"] - df["temp_min"]
     df["humidity_std3"] = df["humidity"].rolling(3, min_periods=1).std()
     df["rainfall_7d"] = df["rainfall"].rolling(7, min_periods=1).sum()
@@ -91,7 +87,6 @@ def run_model_pipeline():
     df["corrosion_risk"] = df["humidity"] * 0.5 + df["so2"] * 0.5
     df = df.fillna(0)
 
-    # 재질 x 노출 조합 생성
     materials = ["석조", "목조", "금속", "회화", "기타"]
     exposures = ["실외", "반실외", "실내"]
     comb = pd.DataFrame(
@@ -103,7 +98,6 @@ def run_model_pipeline():
     comb["key"] = 1
     dataset = pd.merge(df, comb, on="key").drop("key", axis=1)
 
-    # MinMax 정규화
     risk_cols = [
         "weathering_risk",
         "acid_risk",
@@ -176,11 +170,9 @@ def run_model_pipeline():
     )
     dataset["material_risk"] = np.clip(r_base * exp_mult, 0, 100)
 
-    # Target 라벨링
     conditions = [dataset["material_risk"] >= 80, dataset["material_risk"] >= 40]
     dataset["target"] = np.select(conditions, ["위험", "주의"], default="안전")
 
-    # 머신러닝 모델 학습 (백엔드 고정 하이퍼파라미터 적용)
     X = dataset[[
         "temp_avg",
         "temp_max",
@@ -217,38 +209,19 @@ def run_model_pipeline():
     )
 
     rf_model = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
-    gb_model = HistGradientBoostingClassifier(max_iter=100, random_state=42)
-    lr_model = LogisticRegression(max_iter=1000, solver="lbfgs")
-
     rf_model.fit(X_train, y_train)
-    gb_model.fit(X_train, y_train)
 
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-    lr_model.fit(X_train_scaled, y_train)
-
-    acc_rf = accuracy_score(y_test, rf_model.predict(X_test))
-    acc_gb = accuracy_score(y_test, gb_model.predict(X_test))
-    acc_lr = accuracy_score(y_test, lr_model.predict(X_test_scaled))
-
-    model_results = {
-        "RandomForest": acc_rf,
-        "HistGradientBoosting": acc_gb,
-        "LogisticRegression": acc_lr,
-    }
-
-    return dataset, model_results, rf_model, X_encoded
+    return dataset, rf_model, X_encoded
 
 
 # ------------------------------------------------------------
 # 3. 데이터 로드
 # ------------------------------------------------------------
 with st.spinner("🚀 분석 데이터를 로드하고 예측 모델을 준비 중입니다..."):
-    dataset, model_results, rf_model, X_encoded = run_model_pipeline()
+    dataset, rf_model, X_encoded = run_model_pipeline()
 
 # ------------------------------------------------------------
-# 4. 사이드바: 도메인 중심 필터 구성
+# 4. 사이드바: 도메인 중심 필터
 # ------------------------------------------------------------
 st.sidebar.header("🔍 문화유산 조건 필터")
 
@@ -264,7 +237,6 @@ selected_exposure = st.sidebar.selectbox(
     index=0,
 )
 
-# 필터링 적용
 filtered_df = dataset.copy()
 if selected_material != "전체":
     filtered_df = filtered_df[filtered_df["material"] == selected_material]
@@ -272,7 +244,7 @@ if selected_exposure != "전체":
     filtered_df = filtered_df[filtered_df["exposure"] == selected_exposure]
 
 # ------------------------------------------------------------
-# 5. 핵심 지표 메트릭 카드 (Dashboard KPI)
+# 5. 핵심 지표 메트릭 카드
 # ------------------------------------------------------------
 st.markdown(f"### 📌 [{selected_material}] / [{selected_exposure}] 위험 예측 현황 Summary")
 
@@ -295,7 +267,6 @@ st.markdown("---")
 # ------------------------------------------------------------
 col1, col2 = st.columns(2)
 
-# [시각화 1] 선택 조건 기준 위험 등급 분포 (Pie Chart)
 with col1:
     st.subheader("🎯 위험 예측 등급 분포")
     target_counts = filtered_df["target"].value_counts().reset_index()
@@ -308,13 +279,12 @@ with col1:
         color="Target",
         color_discrete_map={"위험": "#E74C3C", "주의": "#F39C12", "안전": "#2ECC71"},
         hole=0.4,
-        title=f"선택 조건 내 위험도 분포 비율",
+        title="선택 조건 내 위험도 분포 비율",
     )
     fig1.update_traces(textinfo="percent+label")
     fig1.update_layout(height=380, margin=dict(t=40, b=20, l=10, r=10))
     st.plotly_chart(fig1, use_container_width=True)
 
-# [시각화 2] 주요 환경 위험 요인 TOP 10 (Feature Importance)
 with col2:
     st.subheader("📌 주요 영향 환경 요인 TOP 10")
     feature_cols = [
@@ -351,41 +321,95 @@ with col2:
 
 st.markdown("---")
 
-# [시각화 3] 재질별 파생변수 가중치 구조
-st.subheader("🏛️ 문화유산 재질별 주요 환경 파생변수 가중치 구조")
+# ------------------------------------------------------------
+# 3. [개선] 재질별 환경 가중치 시각화 (Radar & Dynamic Bar)
+# ------------------------------------------------------------
+st.subheader("🏛️ 문화유산 재질별 환경 위험 가중치 구조 분석")
 
 material_weights = {
-    "석조": {"풍화 위험도": 25, "산성 위험도": 20, "7일 누적강수량": 18, "일교차": 15, "미세먼지 누적부하": 12, "부식 위험도": 10},
-    "목조": {"곰팡이 위험도": 25, "3일 습도변동성": 20, "고습도 위험지속도": 18, "7일 누적강수량": 15, "산화 위험도": 12, "미세먼지 누적부하": 10},
-    "금속": {"부식 위험도": 30, "산성 위험도": 22, "고습도 위험지속도": 18, "3일 습도변동성": 12, "미세먼지 누적부하": 10, "풍화 위험도": 8},
-    "회화": {"산화 위험도": 28, "미세먼지 누적부하": 20, "3일 습도변동성": 18, "고습도 위험지속도": 14, "일교차": 10, "풍화 위험도": 10},
-    "기타": {"풍화 위험도": 20, "산성 위험도": 20, "산화 위험도": 20, "부식 위험도": 20, "미세먼지 누적부하": 20},
+    "석조": {"풍화 위험도": 25, "산성 위험도": 20, "7일 강수량": 18, "일교차": 15, "미세먼지 부하": 12, "부식 위험도": 10, "곰팡이 위험도": 0, "습도 변동성": 0, "고습도 지속": 0, "산화 위험도": 0},
+    "목조": {"풍화 위험도": 0, "산성 위험도": 0, "7일 강수량": 15, "일교차": 0, "미세먼지 부하": 10, "부식 위험도": 0, "곰팡이 위험도": 25, "습도 변동성": 20, "고습도 지속": 18, "산화 위험도": 12},
+    "금속": {"풍화 위험도": 8, "산성 위험도": 22, "7일 강수량": 0, "일교차": 0, "미세먼지 부하": 10, "부식 위험도": 30, "곰팡이 위험도": 0, "습도 변동성": 12, "고습도 지속": 18, "산화 위험도": 0},
+    "회화": {"풍화 위험도": 10, "산성 위험도": 0, "7일 강수량": 0, "일교차": 10, "미세먼지 부하": 20, "부식 위험도": 0, "곰팡이 위험도": 0, "습도 변동성": 18, "고습도 지속": 14, "산화 위험도": 28},
+    "기타": {"풍화 위험도": 20, "산성 위험도": 20, "7일 강수량": 0, "일교차": 0, "미세먼지 부하": 20, "부식 위험도": 20, "곰팡이 위험도": 0, "습도 변동성": 0, "고습도 지속": 0, "산화 위험도": 20},
 }
 
-fig3 = make_subplots(
-    rows=1, cols=5,
-    subplot_titles=[f"[{mat}] 가중치 (%)" for mat in material_weights.keys()]
-)
-colors = ["#8D6E63", "#D7CCC8", "#78909C", "#EC407A", "#AB47BC"]
+tab1, tab2 = st.tabs(["🎯 방사형 레이더 프로필 비교", "📊 재질별 상세 가중치"])
 
-for idx, (mat, weights) in enumerate(material_weights.items()):
-    sorted_weights = dict(sorted(weights.items(), key=lambda item: item[1]))
-    fig3.add_trace(
-        go.Bar(
-            x=list(sorted_weights.values()),
-            y=list(sorted_weights.keys()),
-            orientation="h",
-            marker_color=colors[idx],
-            showlegend=False,
-        ),
-        row=1, col=idx + 1,
+with tab1:
+    fig_radar = go.Figure()
+    categories = list(next(iter(material_weights.values())).keys())
+    color_map = {
+        "석조": "#8D6E63",
+        "목조": "#D7CCC8",
+        "금속": "#78909C",
+        "회화": "#EC407A",
+        "기타": "#AB47BC",
+    }
+
+    # 사이드바에서 재질 선택 시 해당 레이더 영역 강조
+    target_materials = (
+        [selected_material]
+        if selected_material in material_weights
+        else list(material_weights.keys())
     )
 
-fig3.update_layout(height=420, margin=dict(t=50, b=30, l=10, r=10))
-st.plotly_chart(fig3, use_container_width=True)
+    for mat in target_materials:
+        weights = material_weights[mat]
+        r_values = [weights[cat] for cat in categories]
+        r_values.append(r_values[0])  # 폐곡선 닫기
+
+        fig_radar.add_trace(
+            go.Scatterpolar(
+                r=r_values,
+                theta=categories + [categories[0]],
+                fill="toself",
+                name=mat,
+                line_color=color_map.get(mat, "#3498db"),
+                opacity=0.5 if len(target_materials) > 1 else 0.75,
+            )
+        )
+
+    fig_radar.update_layout(
+        polar=dict(
+            radialaxis=dict(visible=True, range=[0, 32], ticksuffix="%")
+        ),
+        showlegend=True,
+        height=450,
+        margin=dict(t=30, b=30, l=40, r=40),
+    )
+    st.plotly_chart(fig_radar, use_container_width=True)
+
+with tab2:
+    # 필터 선택에 따른 가중치 시각화
+    display_mat = selected_material if selected_material in material_weights else "석조"
+    if selected_material == "전체":
+        st.info("💡 사이드바에서 특정 재질을 선택하시면 해당 재질의 세부 가중치를 확인하실 수 있습니다. (현재: 석조 기준 예시)")
+
+    mat_dict = material_weights[display_mat]
+    non_zero_weights = {k: v for k, v in mat_dict.items() if v > 0}
+    sorted_weights = pd.DataFrame(
+        list(non_zero_weights.items()), columns=["환경 파생변수", "가중치(%)"]
+    ).sort_values("가중치(%)", ascending=True)
+
+    fig_bar = px.bar(
+        sorted_weights,
+        x="가중치(%)",
+        y="환경 파생변수",
+        orientation="h",
+        text="가중치(%)",
+        color="가중치(%)",
+        color_continuous_scale="Purples",
+        title=f"[{display_mat}] 핵심 관리 환경 위험요인 가중치 비중",
+    )
+    fig_bar.update_traces(texttemplate="%{text}%", textposition="outside")
+    fig_bar.update_layout(height=350, margin=dict(t=40, b=20, l=10, r=10))
+    st.plotly_chart(fig_bar, use_container_width=True)
+
+st.markdown("---")
 
 # ------------------------------------------------------------
-# 7. 필터링된 데이터 표 출력 및 다운로드
+# 7. 필터링된 데이터 표 출력
 # ------------------------------------------------------------
 st.subheader("📋 선택 조건 위험 예측 데이터 상세 목록")
 
