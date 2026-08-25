@@ -180,7 +180,7 @@ if df is not None:
     # 5. 그리드 배치 차트 시각화
     # ------------------------------------------------------------
     st.markdown("---")
-    st.subheader("📈 종합 기상 및 미세먼지 데이터 분석 (그리드 레이아웃)")
+    st.subheader("📈 종합 기상 및 미세먼지 데이터 분석")
 
     # [Row 1] 계절별 기온/습도 현황 & 연도별 계절 기온 변화 추이
     row1_col1, row1_col2 = st.columns(2)
@@ -214,7 +214,7 @@ if df is not None:
             secondary_y=True,
         )
         fig_season.update_layout(
-            title="🌸☀️🍁❄️ 계절별 평균 기온 및 습도 분포",
+            title="☀️계절별 평균 기온 및 습도 분포 🌸☀️🍁❄️",
             xaxis_title="계절",
             height=420,
             hovermode="x unified",
