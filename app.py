@@ -50,7 +50,7 @@ NY = "106"
 # 최근 발표 시각
 api_date, api_time, display_date = get_latest_base_time()
 
-# 기본값 (예: "2026-08-25 17:00")
+# 기본값
 tm = f"{display_date} {api_time[:2]}:00"
 
 temp = "-"
@@ -165,7 +165,7 @@ except Exception as e:
     print(e)
 
 # ============================================
-# 2. 대기오염 데이터 (시각 일치 매칭)
+# 2. 대기오염 최신 데이터
 # ============================================
 
 AIR_URL = (
@@ -185,6 +185,10 @@ co = "-"
 so2 = "-"
 
 data_time = "-"
+
+# ============================================
+# 대기오염 API 요청
+# ============================================
 
 try:
 
@@ -211,40 +215,34 @@ try:
 
     air_data = air_response.json()
 
+    print(air_data)
+
     items = air_data["response"]["body"]["items"]
 
-    # 영천 측정소 데이터 전체
-    yeongcheon_items = [item for item in items if "영천" in item.get("stationName", "")]
-
+    # 영천 측정소 찾기
     target = None
 
-    # 기상 시각(tm) 형식 정제 ("2026-08-25 17:00")
-    # 대기오염 dataTime 형식과의 차이(공백 등)를 최소화하여 일치 검사
-    for item in yeongcheon_items:
-        dt = item.get("dataTime", "").strip()
-        if dt == tm.strip():
+    for item in items:
+
+        if "영천" in item["stationName"]:
             target = item
             break
 
-    # 해당 시간 데이터가 목록에 없으면 영천 데이터 중 가장 최근 데이터 선택
-    if not target and yeongcheon_items:
-        target = yeongcheon_items[0]
-
     if target:
 
-        data_time = target.get("dataTime", "-")
+        data_time = target["dataTime"]
 
-        pm10 = target.get("pm10Value", "-")
-        pm25 = target.get("pm25Value", "-")
+        pm10 = target["pm10Value"]
+        pm25 = target["pm25Value"]
 
-        o3 = target.get("o3Value", "-")
-        no2 = target.get("no2Value", "-")
+        o3 = target["o3Value"]
+        no2 = target["no2Value"]
 
-        co = target.get("coValue", "-")
-        so2 = target.get("so2Value", "-")
+        co = target["coValue"]
+        so2 = target["so2Value"]
 
         print()
-        print("===== 대기오염 데이터 매칭 성공 =====")
+        print("===== 최신 대기오염 데이터 =====")
 
         print("측정시각:", data_time)
 
@@ -510,7 +508,7 @@ with right:
 <div>
 - 
 </div>
-
+                    
 </div>
         """,
         unsafe_allow_html=True
