@@ -61,13 +61,13 @@ def fetch_asos_year(year):
 def get_season(month):
     """월 정보를 바탕으로 계절 파악"""
     if month in [3, 4, 5]:
-        return "1. 봄 (3~5월)"
+        return "봄 (3~5월)"
     elif month in [6, 7, 8]:
-        return "2. 여름 (6~8월)"
+        return "여름 (6~8월)"
     elif month in [9, 10, 11]:
-        return "3. 가을 (9~11월)"
+        return "가을 (9~11월)"
     else:
-        return "4. 겨울 (12~2월)"
+        return "겨울 (12~2월)"
 
 
 def collect_and_process_data():
