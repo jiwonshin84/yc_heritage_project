@@ -15,10 +15,14 @@ from sklearn.preprocessing import StandardScaler
 import streamlit as st
 
 st.set_page_config(page_title="문화유산 위험 예측 현황 분석", layout="wide")
+
+# ------------------------------------------------------------
+# 1. 메인 타이틀 및 상단 컨트롤 필터 영역
+# ------------------------------------------------------------
 st.title("📊 문화유산 위험 예측 및 재질별 현황 분석")
 
 # ------------------------------------------------------------
-# 1. 기본 설정 및 한글 변수명 매핑 사전
+# 2. 기본 설정 및 한글 변수명 매핑 사전
 # ------------------------------------------------------------
 DATA_PATH = "data/processed/[2016_2025] yeongcheon.csv"
 
@@ -51,7 +55,7 @@ FEATURE_NAME_KO = {
 
 
 # ------------------------------------------------------------
-# 2. 데이터 전처리 및 최적화된 백엔드 파이프라인
+# 3. 데이터 전처리 및 최적화된 백엔드 파이프라인
 # ------------------------------------------------------------
 @st.cache_resource
 def run_model_pipeline():
@@ -215,27 +219,32 @@ def run_model_pipeline():
 
 
 # ------------------------------------------------------------
-# 3. 데이터 로드
+# 4. 데이터 로드
 # ------------------------------------------------------------
 with st.spinner("🚀 분석 데이터를 로드하고 예측 모델을 준비 중입니다..."):
     dataset, rf_model, X_encoded = run_model_pipeline()
 
 # ------------------------------------------------------------
-# 4. 사이드바: 도메인 중심 필터
+# 5. 상단 배치 조건 필터 (제목 바로 아래)
 # ------------------------------------------------------------
-st.sidebar.header("🔍 문화유산 조건 필터")
+st.markdown("---")
+with st.container():
+    st.markdown("##### 🔍 **문화유산 분석 조건 선택**")
+    filter_col1, filter_col2, _ = st.columns([1, 1, 2])
 
-selected_material = st.sidebar.selectbox(
-    "🏛️ 문화유산 재질 선택",
-    options=["전체"] + list(dataset["material"].unique()),
-    index=0,
-)
+    with filter_col1:
+        selected_material = st.selectbox(
+            "🏛️ 문화유산 재질 선택",
+            options=["전체"] + list(dataset["material"].unique()),
+            index=0,
+        )
 
-selected_exposure = st.sidebar.selectbox(
-    "🌿 노출 환경 선택",
-    options=["전체"] + list(dataset["exposure"].unique()),
-    index=0,
-)
+    with filter_col2:
+        selected_exposure = st.selectbox(
+            "🌿 노출 환경 선택",
+            options=["전체"] + list(dataset["exposure"].unique()),
+            index=0,
+        )
 
 filtered_df = dataset.copy()
 if selected_material != "전체":
@@ -243,8 +252,10 @@ if selected_material != "전체":
 if selected_exposure != "전체":
     filtered_df = filtered_df[filtered_df["exposure"] == selected_exposure]
 
+st.markdown("---")
+
 # ------------------------------------------------------------
-# 5. 핵심 지표 메트릭 카드
+# 6. 핵심 지표 메트릭 카드
 # ------------------------------------------------------------
 st.markdown(f"### 📌 [{selected_material}] / [{selected_exposure}] 위험 예측 현황 Summary")
 
@@ -263,7 +274,7 @@ kpi4.metric("✅ 안전 등급 비율", f"{(safe_count / total_count * 100):.1f}
 st.markdown("---")
 
 # ------------------------------------------------------------
-# 6. 메인 분석 시각화
+# 7. 메인 분석 시각화
 # ------------------------------------------------------------
 col1, col2 = st.columns(2)
 
@@ -322,7 +333,7 @@ with col2:
 st.markdown("---")
 
 # ------------------------------------------------------------
-# 7. 재질별 환경 가중치 시각화 (가로형 버튼 칩 선택 방식 적용)
+# 8. 재질별 환경 가중치 시각화 (가로형 버튼 칩 선택 방식)
 # ------------------------------------------------------------
 st.subheader("🏛️ 문화유산 재질별 환경 위험 가중치 구조 분석")
 
@@ -334,9 +345,9 @@ material_weights = {
     "기타": {"풍화 위험도": 20, "산성 위험도": 20, "7일 강수량": 0, "일교차": 0, "미세먼지 부하": 20, "부식 위험도": 20, "곰팡이 위험도": 0, "습도 변동성": 0, "고습도 지속": 0, "산화 위험도": 20},
 }
 
-# 차트 상단에 독립 구성한 가로형 버튼 칩 (st.radio horizontal)
+# 차트 내부 전용 컨트롤러 (가로형 버튼 칩)
 chart_material = st.radio(
-    "🔍 분석할 재질 선택:",
+    "🔍 상세 확인할 재질 선택:",
     options=["전체(레이더 비교)"] + list(material_weights.keys()),
     horizontal=True,
     key="chart_material_selector",
@@ -404,7 +415,7 @@ else:
 st.markdown("---")
 
 # ------------------------------------------------------------
-# 8. 필터링된 데이터 표 출력
+# 9. 필터링된 데이터 표 출력
 # ------------------------------------------------------------
 st.subheader("📋 선택 조건 위험 예측 데이터 상세 목록")
 
