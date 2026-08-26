@@ -251,41 +251,62 @@ if df is not None:
         )
         st.plotly_chart(fig_season_trend, use_container_width=True)
 
-    # [Row 2] 미세먼지 연도별 동향 & 월별 강수량/일사량 분석
+    # [Row 2] 계절별/연도별 미세먼지 동향 & 계절구분 월별 강수량/일사량 분석
     row2_col1, row2_col2 = st.columns(2)
 
     with row2_col1:
-        # 2-1. 연도별 미세먼지 평균 농도
-        df_air_yearly = df.groupby("year")[["pm10", "pm25"]].mean().reset_index()
+        # 2-1. 연도별 계절별 미세먼지 농도 (계절 Tab 추가)
+        st.markdown("##### 🌫️ 계절별·연도별 미세먼지 평균 변화")
+        seasons = ["1. 봄 (3~5월)", "2. 여름 (6~8월)", "3. 가을 (9~11월)", "4. 겨울 (12~2월)"]
+        tab_spring, tab_summer, tab_autumn, tab_winter = st.tabs(["🌸 봄", "☀️ 여름", "🍁 가을", "❄️ 겨울"])
+        
+        season_tabs = {
+            "1. 봄 (3~5월)": tab_spring,
+            "2. 여름 (6~8월)": tab_summer,
+            "3. 가을 (9~11월)": tab_autumn,
+            "4. 겨울 (12~2월)": tab_winter,
+        }
 
-        fig_air = px.bar(
-            df_air_yearly,
-            x="year",
-            y=["pm10", "pm25"],
-            barmode="group",
-            labels={"value": "농도 (㎛/㎥)", "year": "연도", "variable": "구분"},
-            color_discrete_map={"pm10": "#FFAA00", "pm25": "#FF4444"},
-            title="🌫️ 연도별 미세먼지 및 초미세먼지 평균 변화",
-        )
-        fig_air.update_layout(
-            height=420,
-            xaxis=dict(type="category"),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        )
-        st.plotly_chart(fig_air, use_container_width=True)
+        df_air_season_yearly = df.groupby(["season", "year"])[["pm10", "pm25"]].mean().reset_index()
+
+        for season_name, tab in season_tabs.items():
+            with tab:
+                df_sub = df_air_season_yearly[df_air_season_yearly["season"] == season_name]
+                fig_air_season = px.bar(
+                    df_sub,
+                    x="year",
+                    y=["pm10", "pm25"],
+                    barmode="group",
+                    labels={"value": "농도 (㎛/㎥)", "year": "연도", "variable": "구분"},
+                    color_discrete_map={"pm10": "#FFAA00", "pm25": "#FF4444"},
+                    title=f"{season_name} 연도별 미세먼지 농도",
+                )
+                fig_air_season.update_layout(
+                    height=350,
+                    xaxis=dict(type="category"),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                    margin=dict(l=10, r=10, t=40, b=10),
+                )
+                st.plotly_chart(fig_air_season, use_container_width=True)
 
     with row2_col2:
-        # 2-2. 월별 누적 강수량 및 일사량 분석
+        # 2-2. 10년간 월별 통계 (계절 그룹화 적용)
         df_month_agg = (
-            df.groupby("month")
+            df.groupby(["season", "month"])
             .agg({"rainfall": "sum", "solar_radiation": "mean"})
             .reset_index()
+            .sort_values("month")
+        )
+
+        # 월별 계절 표시형 라벨 생성 (예: "3월 (봄)")
+        df_month_agg["month_label"] = df_month_agg.apply(
+            lambda r: f"{r['month']}월\n({r['season'].split('.')[1].split('(')[0].strip()})", axis=1
         )
 
         fig_rain = make_subplots(specs=[[{"secondary_y": True}]])
         fig_rain.add_trace(
             go.Bar(
-                x=df_month_agg["month"],
+                x=df_month_agg["month_label"],
                 y=df_month_agg["rainfall"],
                 name="총 강수량 (mm)",
                 marker_color="#29B6F6",
@@ -294,16 +315,17 @@ if df is not None:
         )
         fig_rain.add_trace(
             go.Scatter(
-                x=df_month_agg["month"],
+                x=df_month_agg["month_label"],
                 y=df_month_agg["solar_radiation"],
                 name="평균 일사량 (MJ/㎡)",
                 line=dict(color="#FFA726", width=3),
+                mode="lines+markers",
             ),
             secondary_y=True,
         )
         fig_rain.update_layout(
-            title="🌧️☀️ 10년간 월별 통계 (누적 강수량 vs 평균 일사량)",
-            xaxis=dict(tickmode="linear", tick0=1, dtick=1, title="월(Month)"),
+            title="🌧️☀️ 계절/월별 통계 (10년 누적 강수량 vs 평균 일사량)",
+            xaxis_title="월 (계절구분)",
             height=420,
             hovermode="x unified",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
