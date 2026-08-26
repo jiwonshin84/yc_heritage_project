@@ -177,10 +177,10 @@ if df is not None:
     kpi5.metric("평균 PM2.5", f"{df['pm25'].mean():.1f} ㎛/㎥")
 
     # ------------------------------------------------------------
-    # 5. 그리드 배치 차트 시각화
+    # 5. 그리드 배치 차트 시각화 (모두 계절 중심 분석)
     # ------------------------------------------------------------
     st.markdown("---")
-    st.subheader("📈 종합 기상 및 미세먼지 데이터 분석")
+    st.subheader("📈 계절별 기상 및 미세먼지 종합 분석")
 
     # [Row 1] 계절별 기온/습도 현황 & 연도별 계절 기온 변화 추이
     row1_col1, row1_col2 = st.columns(2)
@@ -214,7 +214,7 @@ if df is not None:
             secondary_y=True,
         )
         fig_season.update_layout(
-            title="☀️계절별 평균 기온 및 습도 분포 🌸☀️🍁❄️",
+            title="🌸☀️🍁❄️ 계절별 평균 기온 및 습도 분포",
             xaxis_title="계절",
             height=420,
             hovermode="x unified",
@@ -251,88 +251,72 @@ if df is not None:
         )
         st.plotly_chart(fig_season_trend, use_container_width=True)
 
-    # [Row 2] 계절별/연도별 미세먼지 동향 & 계절구분 월별 강수량/일사량 분석
+    # [Row 2] 계절별 미세먼지 농도 & 계절별 강수량/일사량 분석
     row2_col1, row2_col2 = st.columns(2)
 
     with row2_col1:
-        # 2-1. 연도별 계절별 미세먼지 농도 (계절 Tab 추가)
-        st.markdown("##### 🌫️ 계절별·연도별 미세먼지 평균 변화")
-        seasons = ["1. 봄 (3~5월)", "2. 여름 (6~8월)", "3. 가을 (9~11월)", "4. 겨울 (12~2월)"]
-        tab_spring, tab_summer, tab_autumn, tab_winter = st.tabs(["🌸 봄", "☀️ 여름", "🍁 가을", "❄️ 겨울"])
-        
-        season_tabs = {
-            "1. 봄 (3~5월)": tab_spring,
-            "2. 여름 (6~8월)": tab_summer,
-            "3. 가을 (9~11월)": tab_autumn,
-            "4. 겨울 (12~2월)": tab_winter,
-        }
+        # 2-1. 계절별 미세먼지 및 초미세먼지 평균 변화
+        df_season_air = df.groupby("season")[["pm10", "pm25"]].mean().reset_index()
 
-        df_air_season_yearly = df.groupby(["season", "year"])[["pm10", "pm25"]].mean().reset_index()
-
-        for season_name, tab in season_tabs.items():
-            with tab:
-                df_sub = df_air_season_yearly[df_air_season_yearly["season"] == season_name]
-                fig_air_season = px.bar(
-                    df_sub,
-                    x="year",
-                    y=["pm10", "pm25"],
-                    barmode="group",
-                    labels={"value": "농도 (㎛/㎥)", "year": "연도", "variable": "구분"},
-                    color_discrete_map={"pm10": "#FFAA00", "pm25": "#FF4444"},
-                    title=f"{season_name} 연도별 미세먼지 농도",
-                )
-                fig_air_season.update_layout(
-                    height=350,
-                    xaxis=dict(type="category"),
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                    margin=dict(l=10, r=10, t=40, b=10),
-                )
-                st.plotly_chart(fig_air_season, use_container_width=True)
-
-    with row2_col2:
-        # 2-2. 10년간 월별 통계 (계절 그룹화 적용)
-        df_month_agg = (
-            df.groupby(["season", "month"])
-            .agg({"rainfall": "sum", "solar_radiation": "mean"})
-            .reset_index()
-            .sort_values("month")
+        fig_air_season = px.bar(
+            df_season_air,
+            x="season",
+            y=["pm10", "pm25"],
+            barmode="group",
+            labels={"value": "농도 (㎛/㎥)", "season": "계절", "variable": "구분"},
+            color_discrete_map={"pm10": "#FFAA00", "pm25": "#FF4444"},
+            title="🌫️ 계절별 미세먼지 및 초미세먼지 평균 변화",
+            text_auto=".1f",
         )
-
-        # 월별 계절 표시형 라벨 생성 (예: "3월 (봄)")
-        df_month_agg["month_label"] = df_month_agg.apply(
-            lambda r: f"{r['month']}월\n({r['season'].split('.')[1].split('(')[0].strip()})", axis=1
-        )
-
-        fig_rain = make_subplots(specs=[[{"secondary_y": True}]])
-        fig_rain.add_trace(
-            go.Bar(
-                x=df_month_agg["month_label"],
-                y=df_month_agg["rainfall"],
-                name="총 강수량 (mm)",
-                marker_color="#29B6F6",
-            ),
-            secondary_y=False,
-        )
-        fig_rain.add_trace(
-            go.Scatter(
-                x=df_month_agg["month_label"],
-                y=df_month_agg["solar_radiation"],
-                name="평균 일사량 (MJ/㎡)",
-                line=dict(color="#FFA726", width=3),
-                mode="lines+markers",
-            ),
-            secondary_y=True,
-        )
-        fig_rain.update_layout(
-            title="🌧️☀️ 계절/월별 통계 (10년 누적 강수량 vs 평균 일사량)",
-            xaxis_title="월 (계절구분)",
+        fig_air_season.update_layout(
             height=420,
             hovermode="x unified",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         )
-        fig_rain.update_yaxes(title_text="강수량 (mm)", secondary_y=False)
-        fig_rain.update_yaxes(title_text="일사량 (MJ/㎡)", secondary_y=True)
-        st.plotly_chart(fig_rain, use_container_width=True)
+        st.plotly_chart(fig_air_season, use_container_width=True)
+
+    with row2_col2:
+        # 2-2. 계절별 총 강수량 및 평균 일사량 분석
+        df_season_rain = (
+            df.groupby("season")
+            .agg({"rainfall": "sum", "solar_radiation": "mean"})
+            .reset_index()
+        )
+
+        fig_rain_season = make_subplots(specs=[[{"secondary_y": True}]])
+        fig_rain_season.add_trace(
+            go.Bar(
+                x=df_season_rain["season"],
+                y=df_season_rain["rainfall"],
+                name="총 강수량 (mm)",
+                marker_color="#29B6F6",
+                text=df_season_rain["rainfall"].round(1),
+                textposition="auto",
+            ),
+            secondary_y=False,
+        )
+        fig_rain_season.add_trace(
+            go.Scatter(
+                x=df_season_rain["season"],
+                y=df_season_rain["solar_radiation"],
+                name="평균 일사량 (MJ/㎡)",
+                line=dict(color="#FFA726", width=3),
+                mode="lines+markers+text",
+                text=df_season_rain["solar_radiation"].round(2),
+                textposition="top center",
+            ),
+            secondary_y=True,
+        )
+        fig_rain_season.update_layout(
+            title="🌧️☀️ 계절별 기상 통계 (총 강수량 vs 평균 일사량)",
+            xaxis_title="계절",
+            height=420,
+            hovermode="x unified",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        )
+        fig_rain_season.update_yaxes(title_text="강수량 (mm)", secondary_y=False)
+        fig_rain_season.update_yaxes(title_text="일사량 (MJ/㎡)", secondary_y=True)
+        st.plotly_chart(fig_rain_season, use_container_width=True)
 
     # ------------------------------------------------------------
     # 6. 수집 데이터 미리보기
@@ -345,5 +329,5 @@ if df is not None:
         )
 else:
     st.info(
-        "상단의 '🚀 데이터 수집 시작' 버튼을 누르면 최근 10개년 데이터 수집과 함께 2x2 그리드 차트 및 CSV 다운로드 버튼이 제공됩니다."
+        "상단의 '🚀 데이터 수집 시작' 버튼을 누르면 최근 10개년 데이터 수집과 함께 계절별 2x2 그리드 차트 및 CSV 다운로드 버튼이 제공됩니다."
     )
