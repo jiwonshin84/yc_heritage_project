@@ -137,11 +137,11 @@ with map_col:
         tiles=None
     )
 
-    # 1. 브이월드 기본 지도 (기본값)
+    # 1. 브이월드 백지도
     folium.TileLayer(
-        tiles=f"http://api.vworld.kr/req/wmts/1.0.0/{VWORLD_API_KEY}/Base/{{z}}/{{y}}/{{x}}.png",
+        tiles=f"http://api.vworld.kr/req/wmts/1.0.0/{VWORLD_API_KEY}/white/{{z}}/{{y}}/{{x}}.png",
         attr="Vworld",
-        name="브이월드 기본지도",
+        name="브이월드 백지도",
         overlay=False,
         control=True
     ).add_to(m)
@@ -155,11 +155,11 @@ with map_col:
         control=True
     ).add_to(m)
 
-    # 3. 브이월드 백지도
+    # 3. 브이월드 기본 지도 (가장 마지막에 추가하여 첫 화면 기본값으로 지정)
     folium.TileLayer(
-        tiles=f"http://api.vworld.kr/req/wmts/1.0.0/{VWORLD_API_KEY}/white/{{z}}/{{y}}/{{x}}.png",
+        tiles=f"http://api.vworld.kr/req/wmts/1.0.0/{VWORLD_API_KEY}/Base/{{z}}/{{y}}/{{x}}.png",
         attr="Vworld",
-        name="브이월드 백지도",
+        name="브이월드 기본지도",
         overlay=False,
         control=True
     ).add_to(m)
