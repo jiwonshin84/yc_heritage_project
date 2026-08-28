@@ -130,7 +130,7 @@ with map_col:
     # 브이월드 API 키
     VWORLD_API_KEY = "82129328-DDE9-30A7-A653-7D0D893E91BA"
 
-    # 기본 지도 생성 (tiles=None 설정 후 브이월드 레이어 추가)
+    # 지도 생성 (tiles=None 설정 후 브이월드 레이어 추가)
     m = folium.Map(
         location=[center_lat, center_lon],
         zoom_start=15,
@@ -146,7 +146,16 @@ with map_col:
         control=True
     ).add_to(m)
 
-    # 2. 브이월드 위성 지도
+    # 2. 브이월드 야간지도
+    folium.TileLayer(
+        tiles=f"http://api.vworld.kr/req/wmts/1.0.0/{VWORLD_API_KEY}/midnight/{{z}}/{{y}}/{{x}}.png",
+        attr="Vworld",
+        name="브이월드 야간지도",
+        overlay=False,
+        control=True
+    ).add_to(m)
+
+    # 3. 브이월드 위성지도
     folium.TileLayer(
         tiles=f"http://api.vworld.kr/req/wmts/1.0.0/{VWORLD_API_KEY}/Satellite/{{z}}/{{y}}/{{x}}.jpeg",
         attr="Vworld",
@@ -155,7 +164,16 @@ with map_col:
         control=True
     ).add_to(m)
 
-    # 3. 브이월드 기본 지도 (가장 마지막에 추가하여 첫 화면 기본값으로 지정)
+    # 4. 브이월드 하이브리드 지도 (위성지도 등에 오버레이 가능한 지명/도로 레이어)
+    folium.TileLayer(
+        tiles=f"http://api.vworld.kr/req/wmts/1.0.0/{VWORLD_API_KEY}/Hybrid/{{z}}/{{y}}/{{x}}.png",
+        attr="Vworld",
+        name="브이월드 지명/도로망(하이브리드)",
+        overlay=True,
+        control=True
+    ).add_to(m)
+
+    # 5. 브이월드 기본지도 (가장 마지막에 추가하여 첫 화면 기본값으로 설정)
     folium.TileLayer(
         tiles=f"http://api.vworld.kr/req/wmts/1.0.0/{VWORLD_API_KEY}/Base/{{z}}/{{y}}/{{x}}.png",
         attr="Vworld",
@@ -200,7 +218,7 @@ with map_col:
             )
         ).add_to(marker_cluster)
 
-    # 우측 상단 레이어 컨트롤러 (지도 유형 및 밀집도 온/오프)
+    # 우측 상단 레이어 컨트롤러
     folium.LayerControl(collapsed=False).add_to(m)
 
     # 지도 출력
