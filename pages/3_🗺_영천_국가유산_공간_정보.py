@@ -127,9 +127,8 @@ center_lon = selected_row["경도"]
 map_col, list_col = st.columns([3.3, 1.2])
 
 with map_col:
-    # CARTO API 키 및 타일 URL 설정
-    CARTO_API_KEY = "cb1_2exi_1_0939a09e01821af26f3687b7"
-    carto_tile_url = f"https://{{s}}.basemaps.cartocdn.com/rastertiles/voyager/{{z}}/{{x}}/{{y}}{{r}}.png?api_key={CARTO_API_KEY}"
+    # CARTO 오픈 타일 URL 적용 (워터마크 없는 버전)
+    carto_tile_url = "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
     carto_attr = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
 
     # 지도를 선택된 좌표 중심으로 생성
@@ -193,13 +192,12 @@ with list_col:
             addr = row["소재지상세"]
             is_selected = (name == st.session_state.selected_heritage)
             
-            # 버튼 표시 (선택된 항목은 이모지 변경 및 강조)
+            # 버튼 표시 (선택된 항목은 이모지 변경)
             btn_label = f"🚩 {name}" if is_selected else f"🏛️ {name}"
             
             if st.button(btn_label, key=f"list_btn_{idx}", use_container_width=True):
-                # 1. 세션 상태 업데이트
+                # 세션 상태 업데이트 후 새로고침
                 st.session_state.selected_heritage = name
-                # 2. 리프레시를 통해 지도 중심(location) 재설정
                 st.rerun()
             
             st.caption(f"{addr}")
