@@ -131,7 +131,7 @@ with map_col:
     m = folium.Map(
         location=[center_lat, center_lon],
         zoom_start=15, # 중앙으로 올 때 더 자세히 보이도록 조정
-        tiles="OpenStreetMap"
+        tiles="CartoDB positron"
     )
 
     # 마커 클러스터 및 히트맵
