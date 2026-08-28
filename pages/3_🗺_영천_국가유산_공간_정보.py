@@ -127,16 +127,11 @@ center_lon = selected_row["경도"]
 map_col, list_col = st.columns([3.3, 1.2])
 
 with map_col:
-    # CARTO 오픈 타일 URL 적용 (워터마크 없는 버전)
-    carto_tile_url = "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-    carto_attr = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-
-    # 지도를 선택된 좌표 중심으로 생성
+    # OpenStreetMap 기본 타일 사용
     m = folium.Map(
         location=[center_lat, center_lon],
         zoom_start=15,
-        tiles=carto_tile_url,
-        attr=carto_attr
+        tiles="OpenStreetMap"
     )
 
     # 마커 클러스터 및 히트맵
