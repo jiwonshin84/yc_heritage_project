@@ -127,42 +127,18 @@ center_lon = selected_row["경도"]
 map_col, list_col = st.columns([3.3, 1.2])
 
 with map_col:
-    # 브이월드 API 키
-    VWORLD_API_KEY = "82129328-DDE9-30A7-A653-7D0D893E91BA"
+    # CARTO API 키 및 타일 URL 설정
+    CARTO_API_KEY = "cb1_2exi_1_0939a09e01821af26f3687b7"
+    carto_tile_url = f"https://{{s}}.basemaps.cartocdn.com/rastertiles/voyager/{{z}}/{{x}}/{{y}}{{r}}.png?api_key={CARTO_API_KEY}"
+    carto_attr = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
 
-    # 기본 지도 생성 (tiles=None 설정 후 브이월드 타일 레이어 추가)
+    # 지도를 선택된 좌표 중심으로 생성
     m = folium.Map(
         location=[center_lat, center_lon],
         zoom_start=15,
-        tiles=None
+        tiles=carto_tile_url,
+        attr=carto_attr
     )
-
-    # 1. 브이월드 기본 지도
-    folium.TileLayer(
-        tiles=f"http://api.vworld.kr/req/wmts/1.0.0/{VWORLD_API_KEY}/Base/{{z}}/{{y}}/{{x}}.png",
-        attr="Vworld",
-        name="브이월드 기본지도",
-        overlay=False,
-        control=True
-    ).add_to(m)
-
-    # 2. 브이월드 위성 지도
-    folium.TileLayer(
-        tiles=f"http://api.vworld.kr/req/wmts/1.0.0/{VWORLD_API_KEY}/Satellite/{{z}}/{{y}}/{{x}}.jpeg",
-        attr="Vworld",
-        name="브이월드 위성지도",
-        overlay=False,
-        control=True
-    ).add_to(m)
-
-    # 3. 브이월드 백지도
-    folium.TileLayer(
-        tiles=f"http://api.vworld.kr/req/wmts/1.0.0/{VWORLD_API_KEY}/white/{{z}}/{{y}}/{{x}}.png",
-        attr="Vworld",
-        name="브이월드 백지도",
-        overlay=False,
-        control=True
-    ).add_to(m)
 
     # 마커 클러스터 및 히트맵
     marker_cluster = MarkerCluster(name="국가유산 마커").add_to(m)
@@ -200,8 +176,8 @@ with map_col:
             )
         ).add_to(marker_cluster)
 
-    # 레이어 컨트롤 (우측 상단 지도 종류 및 밀집도 토글 버튼)
-    folium.LayerControl(collapsed=False).add_to(m)
+    # 레이어 컨트롤 (히트맵 토글 가능)
+    folium.LayerControl().add_to(m)
 
     # 지도 출력
     st_folium(m, width="100%", height=720, key="gis_map")
@@ -217,11 +193,13 @@ with list_col:
             addr = row["소재지상세"]
             is_selected = (name == st.session_state.selected_heritage)
             
-            # 버튼 표시
+            # 버튼 표시 (선택된 항목은 이모지 변경 및 강조)
             btn_label = f"🚩 {name}" if is_selected else f"🏛️ {name}"
             
             if st.button(btn_label, key=f"list_btn_{idx}", use_container_width=True):
+                # 1. 세션 상태 업데이트
                 st.session_state.selected_heritage = name
+                # 2. 리프레시를 통해 지도 중심(location) 재설정
                 st.rerun()
             
             st.caption(f"{addr}")
