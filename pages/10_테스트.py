@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import itertools  # 👈 itertools 임포트 추가 완료
 import time
 import joblib
 import numpy as np
