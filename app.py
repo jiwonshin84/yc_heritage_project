@@ -4,7 +4,7 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 
@@ -15,17 +15,29 @@ SERVICE_KEY = "feb2bfabd299d5d05e89c7aec49ba7e706112603e76549a92e868bd86ec60323"
 
 
 # ============================================
-# 1. 기상청 지상(AWS) 1분 단위 실시간 관측 데이터
+# 1. 기상청 지상(AWS) 관측 데이터 수집
 # ============================================
-AWS_URL = "http://apis.data.go.kr/1360000/SfcMtsInfoService/getAws1Min"
+AWS_10MIN_URL = "http://apis.data.go.kr/1360000/SfcMtsInfoService/getAws10Min"
 
-# 영천 주요 관측소 목록 (지점 ID)
+# 영천 주요 관측소 목록
 STATION_MAP = {
     "영천(종합)": "281",
     "신령": "853",
     "청통": "854",
     "화북": "855"
 }
+
+def get_latest_tm_10min():
+    """안정적인 10분 단위 최신 tm 문자열 생성 (예: 16:47 -> 16:40)"""
+    now = datetime.now(ZoneInfo("Asia/Seoul"))
+    # 기상청 데이터 전송 지연시간(약 2분) 고려
+    target = now - timedelta(minutes=2)
+    minute = (target.minute // 10) * 10
+    target = target.replace(minute=minute, second=0, microsecond=0)
+    
+    api_tm = target.strftime("%Y%m%d%H%M")
+    display_tm = target.strftime("%Y-%m-%d %H:%M")
+    return api_tm, display_tm
 
 def degree_to_direction(deg):
     """풍향(도) -> 16방위 변환"""
@@ -44,60 +56,61 @@ def degree_to_direction(deg):
     except:
         return "-"
 
-def get_aws_weather_data(stn_id):
-    """특정 지점의 최신 AWS 1분 단위 데이터 수집 (tm 파라미터 제외로 최신값 자동수집)"""
+def get_aws_weather_data(stn_id, api_tm):
+    """특정 지점의 AWS 10분 단위 데이터 수집 (예외 처리 강화)"""
     aws_data = {
         "temp": "-",
         "humidity": "-",
         "rainfall": "-",
         "wind_speed": "-",
-        "wind_dir": "-",
-        "tm": "-"
+        "wind_dir": "-"
     }
     
     try:
         params = {
             "serviceKey": SERVICE_KEY,
             "pageNo": "1",
-            "numOfRows": "1",        # 가장 최신 1건만 가져오기
+            "numOfRows": "10",
             "dataType": "JSON",
-            "stnId": str(stn_id)
+            "stnId": str(stn_id),
+            "tm": api_tm
         }
 
-        response = requests.get(AWS_URL, params=params, timeout=10)
+        response = requests.get(AWS_10MIN_URL, params=params, timeout=10)
         
         if response.status_code == 200:
             res_json = response.json()
-            items = res_json.get("response", {}).get("body", {}).get("items", {}).get("item", [])
+            body = res_json.get("response", {}).get("body", {})
+            
+            # API 키 미승인/에러 응답 시 처리
+            if not body:
+                return aws_data
+
+            items = body.get("items", {}).get("item", [])
             
             if items:
                 item = items[0] if isinstance(items, list) else items
-                aws_data["temp"] = item.get("ta", "-")         # 기온 (°C)
-                aws_data["humidity"] = item.get("hm", "-")     # 습도 (%)
-                aws_data["rainfall"] = item.get("rn1hr", item.get("rn1m", "-")) # 강수량 (mm)
-                aws_data["wind_speed"] = item.get("ws", "-")   # 풍속 (m/s)
-                aws_data["wind_dir"] = degree_to_direction(item.get("wd", "-")) # 풍향
-                
-                # API에서 전달받은 실제 관측 시각 포맷 변환 (YYYYMMDDHHMM -> YYYY-MM-DD HH:MM)
-                raw_tm = str(item.get("tm", ""))
-                if len(raw_tm) == 12:
-                    aws_data["tm"] = f"{raw_tm[:4]}-{raw_tm[4:6]}-{raw_tm[6:8]} {raw_tm[8:10]}:{raw_tm[10:12]}"
-                else:
-                    aws_data["tm"] = raw_tm
+                aws_data["temp"] = item.get("ta", "-")
+                aws_data["humidity"] = item.get("hm", "-")
+                aws_data["rainfall"] = item.get("rn1hr", item.get("rn10m", "-"))
+                aws_data["wind_speed"] = item.get("ws", "-")
+                aws_data["wind_dir"] = degree_to_direction(item.get("wd", "-"))
     except Exception as e:
-        print(f"AWS 1분 데이터 조회 실패 (지점: {stn_id}): {e}")
+        print(f"AWS 데이터 조회 실패 (지점: {stn_id}): {e}")
         
     return aws_data
 
 
-# 4개 관측소 최신 1분 데이터 한 번에 수집
+# 최신 10분 관측 시각 및 데이터 수집
+api_tm, display_tm = get_latest_tm_10min()
+
 weather_results = {}
 for name, stn_id in STATION_MAP.items():
-    weather_results[name] = get_aws_weather_data(stn_id)
+    weather_results[name] = get_aws_weather_data(stn_id, api_tm)
 
 
 # ============================================
-# 2. 대기오염 최신 데이터
+# 2. 대기오염 최신 데이터 (기존 유지)
 # ============================================
 AIR_URL = (
     "https://apis.data.go.kr/"
@@ -184,7 +197,6 @@ st.divider()
 # 대시보드 메인
 # ============================================
 
-# 카드 스타일 정의
 aws_card_style = """
 background-color:#f8f9fa;
 padding:18px;
@@ -238,7 +250,7 @@ bottom:14px;
 # --------------------------------------------
 st.markdown("""
 <h3 style="font-size:22px; margin-bottom:15px;">
-🌦 영천시 지역별 실시간 기상 현황 (1분 AWS 관측)
+🌦 영천시 지역별 실시간 기상 현황 (AWS 10분 관측)
 </h3>
 """, unsafe_allow_html=True)
 
@@ -286,7 +298,7 @@ margin-top:10px;
 </div>
 
 <div style="{time_style}">
-⏱ 관측: {w_data['tm']}
+⏱ 관측: {display_tm}
 </div>
 
 </div>
