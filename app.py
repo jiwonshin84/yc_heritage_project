@@ -14,7 +14,7 @@ pages = {
         st.Page("pages/2_프로젝트 개요.py", title="프로젝트 개요", icon="📋"),
     ],
     "문화유산": [
-        #st.Page("pages/3_전국문화유산현황.py", title="전국 문화유산 현황", icon="🤖"),
+        st.Page("pages/3_전국문화유산현황.py", title="전국 문화유산 현황", icon="🤖"),
         #st.Page("pages/4_ai_explain.py", title="영천 국가유산 공간 정", icon="🧠"),
     ]
 }
