@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-import itertools  # 👈 itertools 임포트 추가 완료
+import itertools
 import time
 import joblib
 import numpy as np
@@ -16,7 +16,7 @@ import streamlit as st
 # 1. 페이지 설정 및 실시간 리프레시 (2초 간격)
 # ------------------------------------------------------------
 st.set_page_config(
-    page_title="문화재 실시간 환경 모니터링 & 위험 진단",
+    page_title="문화재 실시간 통합 모니터링 & 스마트 위험 진단",
     page_icon="🏛️",
     layout="wide",
 )
@@ -26,33 +26,6 @@ st_autorefresh(interval=2 * 1000, key="sensor_refresh")
 FIREBASE_SENSOR_URL = "https://heritage-project-4a361-default-rtdb.asia-southeast1.firebasedatabase.app/sensor.json"
 FIREBASE_HISTORY_URL = "https://heritage-project-4a361-default-rtdb.asia-southeast1.firebasedatabase.app/sensor/history.json"
 DATA_PATH = "data/processed/[2016_2025] yeongcheon.csv"
-
-FEATURE_NAME_KO = {
-    "corrosion_risk": "부식 위험도",
-    "humidity": "평균 습도",
-    "high_humidity_risk": "고습도 위험 지속도",
-    "oxidation_risk": "산화 위험도",
-    "acid_risk": "산성 위험도",
-    "pm25": "초미세먼지(PM2.5)",
-    "weathering_risk": "풍화 위험도",
-    "no2": "이산화질소(NO2)",
-    "pm_load": "미세먼지 누적부하",
-    "pm10": "미세먼지(PM10)",
-    "temp_range": "일교차",
-    "humidity_std3": "3일 습도 변동성",
-    "rainfall_7d": "7일 누적 강수량",
-    "mold_risk": "곰팡이 발생 위험도",
-    "temp_avg": "평균 기온",
-    "temp_max": "최고 기온",
-    "temp_min": "최저 기온",
-    "rainfall": "일 강수량",
-    "wind_speed": "평균 풍속",
-    "solar_radiation": "일사량",
-    "ground_temp": "지면 온도",
-    "o3": "오존(O3)",
-    "co": "일산화탄소(CO)",
-    "so2": "아황산가스(SO2)",
-}
 
 
 # ------------------------------------------------------------
@@ -302,8 +275,8 @@ def load_history_data():
 # ------------------------------------------------------------
 # 4. 메인 대시보드 레이아웃
 # ------------------------------------------------------------
-st.title("🏛️ 문화재 실시간 환경 모니터링 & 스마트 위험 진단")
-st.subheader("BME280 / BH1750 / PMS7003 센서 데이터 스트림 및 머신러닝 위험도 분석")
+st.title("🏛️ 문화재 실시간 통합 모니터링 & 스마트 위험 진단")
+st.subheader("복수 센서(Pico) 평균 연동 및 재질·환경별 실시간 위험도 카드 분석")
 
 realtime_devices = load_realtime_devices()
 dataset, rf_model, X_encoded = load_ml_pipeline()
@@ -311,25 +284,17 @@ dataset, rf_model, X_encoded = load_ml_pipeline()
 if not realtime_devices:
     st.warning("⚠️ Firebase에 저장된 실시간 장치 데이터가 없습니다.")
 else:
-    if "last_timestamps" not in st.session_state:
-        st.session_state.last_timestamps = {}
+    # ------------------------------------------------------------
+    # 4-1. 개별 센서 데이터 출력 및 평균치(Integrated Average) 산출
+    # ------------------------------------------------------------
+    st.markdown("### 📡 개별 센서 실시간 현황")
+    device_items = sorted(realtime_devices.items())
+    
+    temps, hums, pressures, lights = [], [], [], []
+    pm1s, pm25s, pm10s = [], [], []
 
-    new_devices = []
-    for device_key, data in realtime_devices.items():
-        timestamp = data.get("timestamp", "-")
-        device_name = data.get("device", device_key)
-        old_timestamp = st.session_state.last_timestamps.get(device_key)
-        if old_timestamp is not None and old_timestamp != timestamp:
-            new_devices.append(device_name)
-        st.session_state.last_timestamps[device_key] = timestamp
-
-    if len(new_devices) > 0:
-        st.success(f"🆕 [{', '.join(new_devices)}] 실시간 센서 데이터가 업데이트되었습니다.")
-
-    st.divider()
-
-    # 실시간 센서 카드 UI
-    for device_key, data in sorted(realtime_devices.items()):
+    cols = st.columns(len(device_items) if len(device_items) > 0 else 1)
+    for idx, (device_key, data) in enumerate(device_items):
         temp = to_float(data.get("temperature", 0))
         hum = to_float(data.get("humidity", 0))
         pressure = to_float(data.get("pressure", 0))
@@ -338,60 +303,113 @@ else:
         pm25 = to_float(data.get("pm25", 0))
         pm10 = to_float(data.get("pm10", 0))
         timestamp = data.get("timestamp", "-")
-        device = data.get("device", device_key)
+        device_name = data.get("device", device_key)
         status = get_device_status(timestamp)
 
-        t_col1, t_col2 = st.columns([3, 1])
-        with t_col1:
-            st.subheader(f"📡 {device}")
-        with t_col2:
-            st.markdown(f"### {status}")
-        st.caption(f"마지막 측정 시간 : {timestamp}")
+        temps.append(temp)
+        hums.append(hum)
+        pressures.append(pressure)
+        lights.append(light)
+        pm1s.append(pm1)
+        pm25s.append(pm25)
+        pm10s.append(pm10)
 
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("🌡️ 기온", metric_value(temp, "℃", zero_check=True))
-        c2.metric("💧 습도", metric_value(hum, "%", zero_check=True))
-        c3.metric("🌬️ 기압", metric_value(pressure, "hPa", zero_check=True))
-        c4.metric("☀️ 조도", metric_value(light, "lux", zero_check=True))
+        with cols[idx]:
+            with st.container(border=True):
+                st.markdown(f"**{device_name}** ({status})")
+                st.caption(f"측정: {timestamp}")
+                st.metric("🌡️ 기온", f"{temp:.1f} ℃")
+                st.metric("💧 습도", f"{hum:.1f} %")
+                st.metric("🌫️ 미세먼지(PM2.5)", f"{pm25:.1f} ㎍/㎥")
 
-        c5, c6, c7, c8 = st.columns(4)
-        c5.metric("🌫️ PM1.0", f"{pm1:.1f} ㎍/㎥")
-        c6.metric("🌫️ PM2.5", f"{pm25:.1f} ㎍/㎥")
-        c7.metric("🌫️ PM10", f"{pm10:.1f} ㎍/㎥")
-        c8.empty()
+    # 평균치 계산
+    avg_temp = np.mean(temps) if temps else 0
+    avg_hum = np.mean(hums) if hums else 0
+    avg_pressure = np.mean(pressures) if pressures else 0
+    avg_light = np.mean(lights) if lights else 0
+    avg_pm1 = np.mean(pm1s) if pm1s else 0
+    avg_pm25 = np.mean(pm25s) if pm25s else 0
+    avg_pm10 = np.mean(pm10s) if pm10s else 0
 
-        # ------------------------------------------------------------
-        # 5. 실시간 센서 연계 스마트 문화재 위험 진단 추가 영역
-        # ------------------------------------------------------------
-        st.markdown("#### 🛡️ 실시간 센서 기반 문화재 맞춤 위험 진단")
-        d_col1, d_col2 = st.columns(2)
-        with d_col1:
-            eval_material = st.selectbox(
-                "관심 문화재 재질 선택", ["목조", "석조", "금속", "회화", "기타"], key=f"mat_{device_key}"
-            )
-        with d_col2:
-            eval_exposure = st.selectbox(
-                "노출 환경 선택", ["실외", "반실외", "실내"], key=f"exp_{device_key}"
-            )
+    st.markdown("---")
+    
+    # ------------------------------------------------------------
+    # 4-2. 통합 대표 센서 값 (두 센서 평균) 요약 섹션
+    # ------------------------------------------------------------
+    st.markdown("### 📊 센서 통합 대표 평균 지표 (복수 센서 융합)")
+    
+    avg_c1, avg_c2, avg_c3, avg_c4 = st.columns(4)
+    avg_c1.metric("🌡️ 통합 평균 기온", f"{avg_temp:.1f} ℃")
+    avg_c2.metric("💧 통합 평균 습도", f"{avg_hum:.1f} %")
+    avg_c3.metric("🌬️ 통합 평균 기압", f"{avg_pressure:.1f} hPa")
+    avg_c4.metric("☀️ 통합 평균 조도", f"{avg_light:.1f} lux")
 
-        # 실시간 룰 기반 경고 진단 (목조 곰팡이, 금속 고습 등)
-        mold_danger = (hum >= 75) and (temp >= 15)
-        corrosion_danger = (hum >= 80)
+    avg_c5, avg_c6, avg_c7, avg_c8 = st.columns(4)
+    avg_c5.metric("🌫️ 통합 PM1.0", f"{avg_pm1:.1f} ㎍/㎥")
+    avg_c6.metric("🌫️ 통합 PM2.5", f"{avg_pm25:.1f} ㎍/㎥")
+    avg_c7.metric("🌫️ 통합 PM10", f"{avg_pm10:.1f} ㎍/㎥")
+    avg_c8.metric("📡 연동 센서 대수", f"{len(device_items)} 대")
 
-        if eval_material == "목조" and mold_danger:
-            st.error(
-                f"🚨 **[위험 경보] {device}** : 현재 습도({hum}%)와 기온({temp}℃)이 목조 문화재 곰팡이 번식 최적 조건입니다! 즉각적인 환기 및 제습이 필요합니다."
-            )
-        elif eval_material == "금속" and corrosion_danger:
-            st.warning(
-                f"⚠️ **[주의 경보] {device}** : 고습 상태 지속으로 금속 표면 산화 및 부식 위험이 높습니다."
-            )
-        else:
-            st.success(
-                f"✅ **[안전] {device}** : 현재 [{eval_material} / {eval_exposure}] 환경 조건은 비교적 안정적입니다."
-            )
+    st.markdown("---")
 
-        st.divider()
+    # ------------------------------------------------------------
+    # 5. 재질별/노출환경별 위험 진단 카드 UI 
+    # ------------------------------------------------------------
+    st.markdown("### 🛡️ 문화재 재질 및 노출 환경별 실시간 맞춤 위험 진단")
+    
+    card_col1, card_col2 = st.columns(2)
+    with card_col1:
+        eval_material = st.selectbox(
+            "진단 대상 문화재 재질 선택", ["목조", "석조", "금속", "회화", "기타"]
+        )
+    with card_col2:
+        eval_exposure = st.selectbox(
+            "배치 노출 환경 선택", ["실외", "반실외", "실내"]
+        )
+
+    # 룰 기반 정밀 진단 로직 (통합 평균값 기준)
+    mold_danger = (avg_hum >= 75) and (avg_temp >= 15)
+    corrosion_danger = (avg_hum >= 80)
+    high_pm_danger = (avg_pm25 >= 50)
+
+    # 위험 등급 및 메시지 결정
+    if (eval_material == "목조" and mold_danger) or (eval_material == "금속" and corrosion_danger):
+        risk_level = "위험 (Danger)"
+        card_color = "red"
+        advice_text = "현재 온습도 및 환경 조건이 문화재 손상 유발 기준치를 초과했습니다. 즉각적인 보호 조치 및 환기/제습이 필요합니다."
+    elif high_pm_danger or avg_hum >= 70:
+        risk_level = "주의 (Caution)"
+        card_color = "orange"
+        advice_text = "미세먼지 농도 혹은 습도가 다소 높은 상태입니다. 지속적인 모니터링과 국부 환경 조절을 검토하세요."
+    else:
+        risk_level = "안전 (Safe)"
+        card_color = "green"
+        advice_text = "현재 수집된 통합 센서 환경 조건은 선택하신 문화재 재질과 환경에 비교적 안정적인 상태입니다."
+
+    # 카드 형식으로 시각화 (Container 안에서 마크다운 카드로 구성)
+    with st.container(border=True):
+        st.markdown(f"#### 📌 진단 리포트 : [{eval_material} / {eval_exposure}]")
+        
+        c_status, c_score = st.columns([2, 2])
+        with c_status:
+            if risk_level.startswith("위험"):
+                st.error(f"### 🚨 판정 등급 : {risk_level}")
+            elif risk_level.startswith("주의"):
+                st.warning(f"### ⚠️ 판정 등급 : {risk_level}")
+            else:
+                st.success(f"### ✅ 판정 등급 : {risk_level}")
+        with c_score:
+            st.metric("진단 기준 통합 습도/기온", f"{avg_hum:.1f}% / {avg_temp:.1f}℃")
+
+        st.markdown(f"**💡 맞춤 관리 가이드** : {advice_text}")
+        
+        # 세부 항목별 체크리스트 배지 표시
+        b1, b2, b3 = st.columns(3)
+        b1.markdown(f"- 곰팡이 위험(목조): {'🔴 주의' if mold_danger else '🟢 보통'}")
+        b2.markdown(f"- 부식 위험(금속): {'🔴 높음' if corrosion_danger else '🟢 안정'}")
+        b3.markdown(f"- 미세먼지 부하: {'🟠 경계' if high_pm_danger else '🟢 양호'}")
+
+    st.divider()
 
 # ------------------------------------------------------------
 # 6. 이력 통계 및 트렌드 시각화 섹션
