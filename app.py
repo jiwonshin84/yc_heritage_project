@@ -1,6 +1,6 @@
 import os
 import urllib.parse
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -33,16 +33,10 @@ STATION_MAP = {
 # ============================================
 # 헬퍼 함수 정의
 # ============================================
-def get_latest_tm_10min():
-    """10분 전 시각 생성 (YYYYMMDDHHMI 포맷)"""
+def get_current_kst_time():
+    """현재 한국 표준시 표시용 문자열 생성"""
     now = datetime.now(ZoneInfo("Asia/Seoul"))
-    target = now - timedelta(minutes=10)
-    minute = (target.minute // 10) * 10
-    target = target.replace(minute=minute, second=0, microsecond=0)
-    
-    api_tm = target.strftime("%Y%m%d%H%M")
-    display_tm = target.strftime("%Y-%m-%d %H:%M")
-    return api_tm, display_tm
+    return now.strftime("%Y-%m-%d %H:%M:%S")
 
 def degree_to_direction(deg):
     """풍향(도) -> 16방위 변환"""
@@ -70,19 +64,22 @@ def safe_val(val, default="-"):
 # ============================================
 # 데이터 수집 함수 (AWS & 대기오염)
 # ============================================
-def get_aws_weather_data(stn_id, api_tm):
-    """기상청 API 허브(nph-aws2_min)를 이용한 AWS 관측 데이터 수집"""
+def get_aws_weather_data(stn_id):
+    """
+    기상청 API 허브(nph-aws2_min)를 이용한 최신 1분 관측 데이터 수집
+    tm2를 비워두면 명세서에 따라 현재 시각 1분 자료를 자동 반환합니다.
+    """
     aws_data = {
         "temp": "-", "humidity": "-", "rainfall": "-", 
-        "wind_speed": "-", "wind_dir": "-"
+        "wind_speed": "-", "wind_dir": "-", "obs_time": "-"
     }
     raw_text = ""
     
     try:
+        # tm2 파라미터를 생략하여 가장 최신 1분 데이터 요청
         params = {
             "authKey": KMA_AUTH_KEY,
             "stn": str(stn_id),
-            "tm2": api_tm,
             "disp": "1",  # 쉼표(,) 구분자 형식
             "help": "0"
         }
@@ -96,13 +93,14 @@ def get_aws_weather_data(stn_id, api_tm):
                 data_line = lines[-1]
                 parts = [p.strip() for p in data_line.split(",")]
                 
-                # 명세 순서: TM, STN, WD1, WS1, WDS, WSS, WD10, WS10, TA, RE, RN-15m, RN-60m, RN-12H, RN-DAY, HM, ...
+                # 순서: TM, STN, WD1, WS1, WDS, WSS, WD10, WS10, TA, RE, RN-15m, RN-60m, RN-12H, RN-DAY, HM, ...
                 if len(parts) >= 15:
-                    aws_data["wind_dir"] = degree_to_direction(parts[2])  # WD1
-                    aws_data["wind_speed"] = safe_val(parts[3])          # WS1
-                    aws_data["temp"] = safe_val(parts[8])                # TA
+                    aws_data["obs_time"] = parts[0]                      # TM (관측시각)
+                    aws_data["wind_dir"] = degree_to_direction(parts[2])  # WD1 (1분 평균 풍향)
+                    aws_data["wind_speed"] = safe_val(parts[3])          # WS1 (1분 평균 풍속)
+                    aws_data["temp"] = safe_val(parts[8])                # TA (1분 평균 기온)
                     aws_data["rainfall"] = safe_val(parts[10], "0.0")   # RN-15m
-                    aws_data["humidity"] = safe_val(parts[14])            # HM
+                    aws_data["humidity"] = safe_val(parts[14])            # HM (분 평균 상대습도)
         else:
             raw_text = f"HTTP Error {response.status_code}: {response.text}"
     except Exception as e:
@@ -158,13 +156,13 @@ def get_air_pollution_data():
 # ============================================
 # 데이터 수집 실행
 # ============================================
-api_tm, display_tm = get_latest_tm_10min()
+current_kst = get_current_kst_time()
 
 weather_results = {}
 debug_aws_responses = {}
 
 for name, stn_id in STATION_MAP.items():
-    w_data, raw_res = get_aws_weather_data(stn_id, api_tm)
+    w_data, raw_res = get_aws_weather_data(stn_id)
     weather_results[name] = w_data
     debug_aws_responses[name] = raw_res
 
@@ -186,6 +184,11 @@ except Exception:
 
 st.markdown("<h1 style='font-size:30px;'>🏛 공공 환경 데이터 기반 영천 지역 실시간 환경 현황</h1>", unsafe_allow_html=True)
 st.markdown("영천 지역 문화재 보존 관리를 위한 실시간 기상 관측 데이터(AWS) 및 대기 오염 현황 모니터링 페이지입니다.")
+
+# 새로고침 버튼 배치
+if st.button("🔄 실시간 데이터 새로고침"):
+    st.rerun()
+
 st.divider()
 
 # 카드 스타일 정의
@@ -197,12 +200,16 @@ value_style = "font-size:18px; font-weight:700; color:#111827; margin-bottom:10p
 time_style = "font-size:12px; color:#9ca3af; margin-top:15px;"
 
 # --------------------------------------------
-# 1행 : 기상 관측소 실시간 현황
+# 1행 : 기상 관측소 실시간 현황 (최신 1분 데이터)
 # --------------------------------------------
-st.markdown('<h3 style="font-size:22px; margin-bottom:15px;">🌦 영천시 지역별 실시간 기상 현황 (AWS 매분 관측)</h3>', unsafe_allow_html=True)
+st.markdown('<h3 style="font-size:22px; margin-bottom:15px;">🌦 영천시 지역별 실시간 기상 현황 (AWS 1분 관측)</h3>', unsafe_allow_html=True)
 aws_cols = st.columns(4)
 
 for idx, (stn_name, w_data) in enumerate(weather_results.items()):
+    obs_time_fmt = w_data['obs_time']
+    if len(obs_time_fmt) == 12:
+        obs_time_fmt = f"{obs_time_fmt[:4]}-{obs_time_fmt[4:6]}-{obs_time_fmt[6:8]} {obs_time_fmt[8:10]}:{obs_time_fmt[10:12]}"
+        
     with aws_cols[idx]:
         st.markdown(
             f"""
@@ -210,12 +217,12 @@ for idx, (stn_name, w_data) in enumerate(weather_results.items()):
     <div style="{title_style}">📍 {stn_name}</div>
     <hr style="margin: 8px 0;">
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px;">
-        <div><div style="{label_style}">🌡 기온</div><div style="{value_style}">{w_data['temp']} °C</div></div>
-        <div><div style="{label_style}">💧 습도</div><div style="{value_style}">{w_data['humidity']} %</div></div>
+        <div><div style="{label_style}">🌡 기온 (1분)</div><div style="{value_style}">{w_data['temp']} °C</div></div>
+        <div><div style="{label_style}">💧 습도 (1분)</div><div style="{value_style}">{w_data['humidity']} %</div></div>
         <div><div style="{label_style}">🌧 강수량</div><div style="{value_style}">{w_data['rainfall']} mm</div></div>
         <div><div style="{label_style}">💨 풍속/풍향</div><div style="{value_style}">{w_data['wind_speed']} m/s<br><span style="font-size:13px; font-weight:normal; color:#4b5563;">({w_data['wind_dir']})</span></div></div>
     </div>
-    <div style="{time_style}">⏱ 관측({stn_name}): {display_tm}</div>
+    <div style="{time_style}">⏱ 관측 시각: {obs_time_fmt}</div>
 </div>
             """,
             unsafe_allow_html=True
@@ -277,9 +284,9 @@ st.caption("선화여고 - 영천 헤리티지 AI 탐구단")
 # 3행 : 개발자 디버깅용 확장 섹션
 # --------------------------------------------
 with st.expander("🔍 API 응답 데이터 디버깅 (개발자용 확인)"):
-    st.write("요청 API 시각 파라미터(tm2):", api_tm)
+    st.write("페이지 조회 시각:", current_kst)
     
-    st.subheader("1. 기상청 AWS 원본 텍스트 데이터 (영천 종합)")
+    st.subheader("1. 기상청 AWS 최신 1분 원본 데이터 (영천 종합)")
     st.code(debug_aws_responses.get("영천(종합)", ""), language="text")
     
     st.subheader("2. 환경공단 대기오염 원본 데이터")
