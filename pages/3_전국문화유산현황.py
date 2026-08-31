@@ -18,7 +18,7 @@ st.set_page_config(
 # =================================================
 st.markdown("""
 <h1 style="font-size:34px; margin-bottom:5px;">
-🇰🇷 전국 문화유산 현황
+전국 문화유산 현황
 </h1>
 <div style="font-size:17px; color:#6b7280; margin-bottom:20px;">
 국가유산 공공데이터와 2025년 최신 인구 통계를 활용한 시각화
