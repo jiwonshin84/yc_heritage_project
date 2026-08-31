@@ -26,7 +26,6 @@ STATION_MAP = {
 def get_latest_tm_10min():
     """기상청 AWS 전송 지연을 고려해 15분 전 10분 단위 시각 생성"""
     now = datetime.now(ZoneInfo("Asia/Seoul"))
-    # 안전하게 15분 전 데이터 요청 (API 업데이트 지연 대비)
     target = now - timedelta(minutes=15)
     minute = (target.minute // 10) * 10
     target = target.replace(minute=minute, second=0, microsecond=0)
@@ -56,10 +55,10 @@ def safe_val(val, default="-"):
     """API 응답 값 유효성 체크 함수"""
     if val is None or val == "" or str(val).startswith("-99"):
         return default
-    return val
+    return str(val)
 
 def get_aws_weather_data(stn_id, api_tm):
-    """특정 지점의 AWS 10분 단위 데이터 수집 및 디버깅용 원본 반환"""
+    """특정 지점의 AWS 10분 단위 데이터 수집"""
     aws_data = {
         "temp": "-",
         "humidity": "-",
@@ -67,12 +66,10 @@ def get_aws_weather_data(stn_id, api_tm):
         "wind_speed": "-",
         "wind_dir": "-"
     }
-    raw_json = {} # 디버깅용 저장소
+    raw_json = {}
     
     try:
-        # URL 인코딩 키 문제 방지
         decoded_key = urllib.parse.unquote(SERVICE_KEY)
-        
         params = {
             "serviceKey": decoded_key,
             "pageNo": "1",
@@ -85,13 +82,12 @@ def get_aws_weather_data(stn_id, api_tm):
         response = requests.get(AWS_10MIN_URL, params=params, timeout=10)
         
         if response.status_code == 200:
-            raw_json = response.json() # 디버깅을 위해 응답 전체 저장
+            raw_json = response.json()
             items = raw_json.get("response", {}).get("body", {}).get("items", {}).get("item", [])
             
             if items:
                 item = items[0] if isinstance(items, list) else items
                 
-                # 대소문자 키 대응 (API 사양 보완)
                 ta = item.get("ta") or item.get("TA")
                 hm = item.get("hm") or item.get("HM")
                 rn = item.get("rn1hr") or item.get("rn10m") or item.get("RN")
@@ -110,11 +106,11 @@ def get_aws_weather_data(stn_id, api_tm):
         
     return aws_data, raw_json
 
-# 최신 10분 관측 시각 및 데이터 수집
+# 관측 시각 및 데이터 수집
 api_tm, display_tm = get_latest_tm_10min()
 
 weather_results = {}
-debug_aws_responses = {} # 디버깅 데이터 저장
+debug_aws_responses = {}
 
 for name, stn_id in STATION_MAP.items():
     w_data, raw_res = get_aws_weather_data(stn_id, api_tm)
@@ -128,7 +124,7 @@ for name, stn_id in STATION_MAP.items():
 AIR_URL = "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty"
 
 pm10 = pm25 = o3 = no2 = co = so2 = data_time = "-"
-debug_air_response = {} # 대기오염 디버깅 데이터 저장
+debug_air_response = {}
 
 try:
     decoded_key = urllib.parse.unquote(SERVICE_KEY)
@@ -149,7 +145,9 @@ try:
 
         target = None
         for item in items:
-            if "영천" in item.get("stationName", ""):
+            # stationName이 '영천시' 또는 '영천'인 경우 매칭
+            st_name = item.get("stationName", "")
+            if "영천" in st_name:
                 target = item
                 break
 
@@ -273,13 +271,12 @@ st.divider()
 st.caption("선화여고 - 영천 헤리티지 AI 탐구단")
 
 # ==========================================================
-# 3. 개발자 디버깅용 섹션 (여기서 에러 원인을 확인하세요!)
+# 3. 개발자 디버깅용 섹션
 # ==========================================================
-with st.expander("🔍 API 응답 데이터 디버깅 (개발자용 확인 - 데이터가 안뜰때 여기를 확인하세요)"):
+with st.expander("🔍 API 응답 데이터 디버깅 (개발자용 확인)"):
     st.write("요청 API 시각 파라미터(tm):", api_tm)
     
-    st.subheader("1. 기상청 AWS 원본 데이터")
-    st.write("영천(종합) 관측소 응답:")
+    st.subheader("1. 기상청 AWS 원본 데이터 (영천 종합)")
     st.json(debug_aws_responses.get("영천(종합)", {}))
     
     st.subheader("2. 환경공단 대기오염 원본 데이터")
