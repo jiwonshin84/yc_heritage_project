@@ -10,12 +10,12 @@ st.set_page_config(
 # 사이드바 메뉴 및 연결할 실제 파일 경로 설정
 pages = {
     "메인": [
-        st.Page("pages/1_dashboard.py", title="실시간 대시보드", icon="🏠"),
-        st.Page("pages/2_overview.py", title="프로젝트 개요", icon="📋"),
+        st.Page("pages/1_실시간 대시보드.py", title="실시간 대시보드", icon="🏠"),
+        st.Page("pages/2_프로젝트 개요.py", title="프로젝트 개요", icon="📋"),
     ],
-    "분석 & 예측": [
-        #st.Page("pages/3_ml_model.py", title="위험 예측 모델 학습", icon="🤖"),
-        #st.Page("pages/4_ai_explain.py", title="AI 문화재 해설", icon="🧠"),
+    "문화유산": [
+        #st.Page("pages/3_전국문화유산현황.py", title="전국 문화유산 현황", icon="🤖"),
+        #st.Page("pages/4_ai_explain.py", title="영천 국가유산 공간 정", icon="🧠"),
     ]
 }
 
