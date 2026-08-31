@@ -14,8 +14,8 @@ pages = {
         st.Page("pages/2_overview.py", title="프로젝트 개요", icon="📋"),
     ],
     "분석 & 예측": [
-        st.Page("pages/3_ml_model.py", title="위험 예측 모델 학습", icon="🤖"),
-        st.Page("pages/4_ai_explain.py", title="AI 문화재 해설", icon="🧠"),
+        #st.Page("pages/3_ml_model.py", title="위험 예측 모델 학습", icon="🤖"),
+        #st.Page("pages/4_ai_explain.py", title="AI 문화재 해설", icon="🧠"),
     ]
 }
 
