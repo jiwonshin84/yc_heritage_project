@@ -13,7 +13,7 @@ from streamlit_autorefresh import st_autorefresh
 # ============================================
 st.set_page_config(
     page_title="공공 환경 데이터 기반 영천 지역 실시간 환경 현황",
-    page_icon="🏛",
+    page_icon="🏠",
     layout="wide"
 )
 
