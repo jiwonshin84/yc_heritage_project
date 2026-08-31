@@ -28,7 +28,7 @@ pages = {
     "피지컬": [
         st.Page("pages/9_피코 실시간 데이터.py", title="피코 실시간 데이터", icon="🌦"),
         st.Page("pages/10_테스트.py", title="테스트", icon="🧪"),     
-        st.Page("pages/11_군집 분석.py", title="군집 분석", icon="🛡️")
+        st.Page("pages/11_군집 분석.py", title="군집 분석", icon="🛡️"),
     ]
 }
 
