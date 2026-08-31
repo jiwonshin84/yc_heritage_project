@@ -6,6 +6,19 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import requests
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
+
+# ============================================
+# Streamlit 페이지 기본 설정
+# ============================================
+st.set_page_config(
+    page_title="공공 환경 데이터 기반 영천 지역 실시간 환경 현황",
+    page_icon="🏛",
+    layout="wide"
+)
+
+# 60초(60,000밀리초)마다 자동으로 페이지를 새로고침 (최대 1,000회)
+count = st_autorefresh(interval=60000, limit=1000, key="weather_auto_refresh")
 
 # ============================================
 # API KEY 및 기본 설정
@@ -65,10 +78,7 @@ def safe_val(val, default="-"):
 # 데이터 수집 함수 (AWS & 대기오염)
 # ============================================
 def get_aws_weather_data(stn_id):
-    """
-    기상청 API 허브(nph-aws2_min)를 이용한 최신 1분 관측 데이터 수집
-    tm2를 비워두면 명세서에 따라 현재 시각 1분 자료를 자동 반환합니다.
-    """
+    """기상청 API 허브(nph-aws2_min)를 이용한 최신 1분 관측 데이터 수집"""
     aws_data = {
         "temp": "-", "humidity": "-", "rainfall": "-", 
         "wind_speed": "-", "wind_dir": "-", "obs_time": "-"
@@ -76,7 +86,6 @@ def get_aws_weather_data(stn_id):
     raw_text = ""
     
     try:
-        # tm2 파라미터를 생략하여 가장 최신 1분 데이터 요청
         params = {
             "authKey": KMA_AUTH_KEY,
             "stn": str(stn_id),
@@ -169,14 +178,8 @@ for name, stn_id in STATION_MAP.items():
 air_data, debug_air_response = get_air_pollution_data()
 
 # ============================================
-# Streamlit UI 구성
+# UI 레이아웃 구성
 # ============================================
-st.set_page_config(
-    page_title="공공 환경 데이터 기반 영천 지역 실시간 환경 현황",
-    page_icon="🏛",
-    layout="wide"
-)
-
 try:
     df = pd.read_csv("data/processed/yc_heritage_detail_enriched.csv")
 except Exception:
@@ -185,9 +188,8 @@ except Exception:
 st.markdown("<h1 style='font-size:30px;'>🏛 공공 환경 데이터 기반 영천 지역 실시간 환경 현황</h1>", unsafe_allow_html=True)
 st.markdown("영천 지역 문화재 보존 관리를 위한 실시간 기상 관측 데이터(AWS) 및 대기 오염 현황 모니터링 페이지입니다.")
 
-# 새로고침 버튼 배치
-if st.button("🔄 실시간 데이터 새로고침"):
-    st.rerun()
+# 자동 새로고침 상태 안내 표시
+st.info(f"🔄 **실시간 자동 갱신 중** (마지막 화면 동기화: {current_kst}) — 1분마다 최신 관측값으로 자동 업데이트됩니다.")
 
 st.divider()
 
@@ -284,7 +286,8 @@ st.caption("선화여고 - 영천 헤리티지 AI 탐구단")
 # 3행 : 개발자 디버깅용 확장 섹션
 # --------------------------------------------
 with st.expander("🔍 API 응답 데이터 디버깅 (개발자용 확인)"):
-    st.write("페이지 조회 시각:", current_kst)
+    st.write("페이지 갱신 횟수 (Auto-Refresh Count):", count)
+    st.write("현재 시스템 시각:", current_kst)
     
     st.subheader("1. 기상청 AWS 최신 1분 원본 데이터 (영천 종합)")
     st.code(debug_aws_responses.get("영천(종합)", ""), language="text")
