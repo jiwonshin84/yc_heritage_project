@@ -11,254 +11,145 @@ from zoneinfo import ZoneInfo
 # ============================================
 # API KEY
 # ============================================
-
 SERVICE_KEY = "feb2bfabd299d5d05e89c7aec49ba7e706112603e76549a92e868bd86ec60323"
 
 
-def get_latest_base_time():
+# ============================================
+# 1. 기상청 지상(AWS) 10분 단위 실시간 관측 데이터
+# ============================================
+AWS_URL = "http://apis.data.go.kr/1360000/SfcMtsInfoService/getAws10Min"
 
+# 영천 주요 관측소 목록 (지점 ID)
+STATION_MAP = {
+    "영천(종합)": "281",
+    "신령": "853",
+    "청통": "854",
+    "화북": "855"
+}
+
+def get_aws_latest_tm():
+    """가장 최근 10분 단위 관측 시각(YYYYMMDDHHMM) 생성"""
     now = datetime.now(ZoneInfo("Asia/Seoul"))
+    # 최신 관측값 수집 오차 감안하여 약 2분 전 기준 10분 단위 절삭
+    target_time = now - timedelta(minutes=2)
+    minute = (target_time.minute // 10) * 10
+    target = target_time.replace(minute=minute, second=0, microsecond=0)
+    
+    api_tm = target.strftime("%Y%m%d%H%M")
+    display_tm = target.strftime("%Y-%m-%d %H:%M")
+    return api_tm, display_tm
 
-    target = now.replace(minute=0, second=0, microsecond=0)
-
-    # 초단기실황은 정시+40분 이후 공개
-    if now.minute < 40:
-        target -= timedelta(hours=1)
-
-    api_date = target.strftime("%Y%m%d")
-    api_time = target.strftime("%H00")
-
-    display_date = target.strftime("%Y-%m-%d")
-
-    return api_date, api_time, display_date
-
-
-# ============================================
-# 1. 기상청 초단기실황 최신 자료
-# ============================================
-
-ULTRA_URL = (
-    "https://apis.data.go.kr/"
-    "1360000/VilageFcstInfoService_2.0/"
-    "getUltraSrtNcst"
-)
-
-# 영천시 중심 격자
-NX = "92"
-NY = "106"
-
-# 최근 발표 시각
-api_date, api_time, display_date = get_latest_base_time()
-
-# 기본값
-tm = f"{display_date} {api_time[:2]}:00"
-
-temp = "-"
-humidity = "-"
-
-rainfall = "-"
-wind_speed = "-"
-
-rain_type = "-"
-wind_dir = "-"
-
-# 풍향 변환 함수
 def degree_to_direction(deg):
-
+    """풍향(도) -> 16방위 변환"""
     try:
         deg = float(deg)
-
+        if deg < 0:
+            return "-"
         dirs = [
-            "북", "북동", "동", "남동",
-            "남", "남서", "서", "북서"
+            "북", "북북동", "북동", "동북동", 
+            "동", "남동", "남", "남남서", 
+            "남서", "서남서", "서", "서북서", 
+            "북서", "북북서", "북"
         ]
-
-        return dirs[
-            round(deg / 45) % 8
-        ]
-
+        idx = int((deg + 11.25) / 22.5) % 16
+        return dirs[idx]
     except:
         return "-"
 
-
-try:
-
-    ultra_params = {
-        "serviceKey": SERVICE_KEY,
-        "pageNo": "1",
-        "numOfRows": "1000",
-        "dataType": "JSON",
-
-        "base_date": api_date,
-        "base_time": api_time,
-
-        "nx": NX,
-        "ny": NY
+def get_aws_weather_data(stn_id, tm_str):
+    """특정 지점의 AWS 10분 단위 데이터 수집"""
+    aws_data = {
+        "temp": "-",
+        "humidity": "-",
+        "rainfall": "-",
+        "wind_speed": "-",
+        "wind_dir": "-",
+        "time": "-"
     }
+    
+    try:
+        params = {
+            "serviceKey": SERVICE_KEY,
+            "pageNo": "1",
+            "numOfRows": "10",
+            "dataType": "JSON",
+            "stnId": str(stn_id),
+            "tm": tm_str
+        }
 
-    response = requests.get(
-        ULTRA_URL,
-        params=ultra_params,
-        timeout=30
-    )
+        response = requests.get(AWS_URL, params=params, timeout=10)
+        
+        if response.status_code == 200:
+            res_json = response.json()
+            items = res_json.get("response", {}).get("body", {}).get("items", {}).get("item", [])
+            
+            if items:
+                item = items[0] if isinstance(items, list) else items
+                aws_data["temp"] = item.get("ta", "-")         # 기온 (°C)
+                aws_data["humidity"] = item.get("hm", "-")     # 습도 (%)
+                aws_data["rainfall"] = item.get("rn1hr", item.get("rn10m", "-")) # 강수량 (mm)
+                aws_data["wind_speed"] = item.get("ws", "-")   # 풍속 (m/s)
+                aws_data["wind_dir"] = degree_to_direction(item.get("wd", "-")) # 풍향
+                aws_data["time"] = item.get("tm", "-")
+    except Exception as e:
+        print(f"AWS 데이터 조회 실패 (지점: {stn_id}): {e}")
+        
+    return aws_data
 
-    print("초단기실황 응답코드:", response.status_code)
 
-    data = response.json()
+# 관측 시각 산출
+api_tm, display_tm = get_aws_latest_tm()
 
-    items = (
-        data["response"]["body"]
-        ["items"]["item"]
-    )
-
-    for item in items:
-
-        category = item["category"]
-        value = item["obsrValue"]
-
-        if category == "T1H":
-            temp = value
-
-        elif category == "REH":
-            humidity = value
-
-        elif category == "RN1":
-            rainfall = value
-
-        elif category == "WSD":
-            wind_speed = value
-
-        elif category == "VEC":
-            wind_dir = degree_to_direction(value)
-
-        elif category == "PTY":
-
-            rain_map = {
-                "0": "없음",
-                "1": "비",
-                "2": "비/눈",
-                "3": "눈",
-                "5": "빗방울",
-                "6": "빗방울눈날림",
-                "7": "눈날림"
-            }
-
-            rain_type = rain_map.get(
-                str(value),
-                str(value)
-            )
-
-    print()
-    print("===== 초단기실황 =====")
-
-    print("관측시각:", tm)
-    print("기온:", temp)
-    print("습도:", humidity)
-    print("강수량:", rainfall)
-    print("풍속:", wind_speed)
-    print("풍향:", wind_dir)
-    print("강수형태:", rain_type)
-
-except Exception as e:
-
-    print("초단기실황 조회 실패")
-    print(e)
 
 # ============================================
-# 2. 대기오염 최신 데이터
+# 2. 대기오염 최신 데이터 (기존 유지)
 # ============================================
-
 AIR_URL = (
     "https://apis.data.go.kr/"
     "B552584/ArpltnInforInqireSvc/"
     "getCtprvnRltmMesureDnsty"
 )
 
-# 기본값
 pm10 = "-"
 pm25 = "-"
-
 o3 = "-"
 no2 = "-"
-
 co = "-"
 so2 = "-"
-
 data_time = "-"
 
-# ============================================
-# 대기오염 API 요청
-# ============================================
-
 try:
-
     air_params = {
         "serviceKey": SERVICE_KEY,
         "returnType": "json",
-
         "numOfRows": "100",
         "pageNo": "1",
-
-        # 경북
         "sidoName": "경북",
-
         "ver": "1.0"
     }
 
-    air_response = requests.get(
-        AIR_URL,
-        params=air_params,
-        timeout=30
-    )
-
-    print("대기오염 응답코드:", air_response.status_code)
-
+    air_response = requests.get(AIR_URL, params=air_params, timeout=30)
     air_data = air_response.json()
 
-    print(air_data)
+    items = air_data.get("response", {}).get("body", {}).get("items", [])
 
-    items = air_data["response"]["body"]["items"]
-
-    # 영천 측정소 찾기
     target = None
-
     for item in items:
-
-        if "영천" in item["stationName"]:
+        if "영천" in item.get("stationName", ""):
             target = item
             break
 
     if target:
-
-        data_time = target["dataTime"]
-
-        pm10 = target["pm10Value"]
-        pm25 = target["pm25Value"]
-
-        o3 = target["o3Value"]
-        no2 = target["no2Value"]
-
-        co = target["coValue"]
-        so2 = target["so2Value"]
-
-        print()
-        print("===== 최신 대기오염 데이터 =====")
-
-        print("측정시각:", data_time)
-
-        print("PM10:", pm10)
-        print("PM2.5:", pm25)
-
-        print("O3:", o3)
-        print("NO2:", no2)
-
-        print("CO:", co)
-        print("SO2:", so2)
+        data_time = target.get("dataTime", "-")
+        pm10 = target.get("pm10Value", "-")
+        pm25 = target.get("pm25Value", "-")
+        o3 = target.get("o3Value", "-")
+        no2 = target.get("no2Value", "-")
+        co = target.get("coValue", "-")
+        so2 = target.get("so2Value", "-")
 
 except Exception as e:
-
-    print("대기오염 데이터 조회 실패")
-    print(e)
+    print("대기오염 데이터 조회 실패:", e)
 
 
 # ==========================================================
@@ -273,9 +164,11 @@ st.set_page_config(
 # ==========================================================
 # 데이터 불러오기
 # ==========================================================
-df = pd.read_csv(
-    "data/processed/yc_heritage_detail_enriched.csv"
-)
+try:
+    df = pd.read_csv("data/processed/yc_heritage_detail_enriched.csv")
+except:
+    df = pd.DataFrame()
+
 
 # ==========================================================
 # 제목
@@ -295,36 +188,32 @@ st.divider()
 # ============================================
 # 상단 환경 대시보드
 # ============================================
-
 st.markdown("""
-<h3 style="
-    font-size:25px;
-    margin-bottom:10px;
-">
+<h3 style="font-size:25px; margin-bottom:10px;">
 🌿 영천시 실시간 환경 데이터 및 문화재 현황
 </h3>
 """, unsafe_allow_html=True)
 
-# 메인 영역
+# 메인 영역 (열 레이아웃)
 left, center, right = st.columns([1.4, 2.0, 1.0])
 
-# ============================================
-# 공통 스타일
-# ============================================
 
+# ============================================
+# 공통 카드 스타일
+# ============================================
 card_style = """
 background-color:#f8f9fa;
 padding:22px;
 border-radius:20px;
 border:1px solid #e5e7eb;
 box-shadow:0 4px 12px rgba(0,0,0,0.05);
-height:350px;
+height:380px;
 """
 
 title_style = """
-font-size:24px;
+font-size:22px;
 font-weight:700;
-margin-bottom:14px;
+margin-bottom:10px;
 color:#1f2937;
 """
 
@@ -335,10 +224,10 @@ margin-bottom:4px;
 """
 
 value_style = """
-font-size:22px;
+font-size:20px;
 font-weight:700;
 color:#111827;
-margin-bottom:18px;
+margin-bottom:14px;
 """
 
 time_style = """
@@ -349,18 +238,28 @@ position:absolute;
 bottom:20px;
 """
 
-# ============================================
-# 1열 : 기상 환경
-# ============================================
 
+# ============================================
+# 1열 : 기상 환경 (AWS 4개 지점 선택 기능 추가)
+# ============================================
 with left:
+    # 관측소 선택 드롭다운
+    selected_stn_name = st.selectbox(
+        "📍 AWS 기상 관측소 선택",
+        options=list(STATION_MAP.keys()),
+        index=0,
+        key="aws_station_select"
+    )
+    
+    selected_stn_id = STATION_MAP[selected_stn_name]
+    weather = get_aws_weather_data(selected_stn_id, api_tm)
 
     st.markdown(
         f"""
 <div style="{card_style}; position:relative;">
 
 <div style="{title_style}">
-🌦 기상 환경
+🌦 실시간 기상 환경 ({selected_stn_name})
 </div>
 
 <hr>
@@ -368,34 +267,34 @@ with left:
 <div style="
 display:grid;
 grid-template-columns:1fr 1fr;
-gap:16px;
-margin-top:20px;
+gap:12px;
+margin-top:10px;
 ">
 
 <div>
 <div style="{label_style}">🌡 기온</div>
-<div style="{value_style}">{temp} °C</div>
+<div style="{value_style}">{weather['temp']} °C</div>
 </div>
 
 <div>
 <div style="{label_style}">💧 습도</div>
-<div style="{value_style}">{humidity} %</div>
+<div style="{value_style}">{weather['humidity']} %</div>
 </div>
 
 <div>
-<div style="{label_style}">🌧 강수량</div>
-<div style="{value_style}">{rainfall} mm</div>
+<div style="{label_style}">🌧 강수량 (1시간)</div>
+<div style="{value_style}">{weather['rainfall']} mm</div>
 </div>
 
 <div>
-<div style="{label_style}">💨 풍속</div>
-<div style="{value_style}">{wind_speed} m/s</div>
+<div style="{label_style}">💨 풍속 / 풍향</div>
+<div style="{value_style}">{weather['wind_speed']} m/s ({weather['wind_dir']})</div>
 </div>
 
 </div>
 
 <div style="{time_style}">
-⏱ 측정 시각 : {tm}
+⏱ 관측 시각 : {display_tm}
 </div>
 
 </div>
@@ -403,18 +302,20 @@ margin-top:20px;
         unsafe_allow_html=True
     )
 
-# ============================================
-# 2열 : 대기오염 현황
-# ============================================
 
+# ============================================
+# 2열 : 대기오염 현황 (기존 그대로)
+# ============================================
 with center:
-
+    # 1열의 selectbox 높이 상쇄용 더미 공간
+    st.markdown("<div style='height: 42px;'></div>", unsafe_allow_html=True)
+    
     st.markdown(
         f"""
 <div style="{card_style}; position:relative;">
 
 <div style="{title_style}">
-🌫 대기오염 현황
+🌫 대기오염 현황 (영천 측정소)
 </div>
 
 <hr>
@@ -422,38 +323,32 @@ with center:
 <div style="
 display:grid;
 grid-template-columns:1fr 1fr 1fr;
-gap:20px;
-margin-top:20px;
+gap:16px;
+margin-top:10px;
 ">
 
 <div>
-
 <div style="{label_style}">PM10</div>
-<div style="{value_style}">{pm10}</div>
+<div style="{value_style}">{pm10} ㎍/㎥</div>
 
 <div style="{label_style}">O₃</div>
-<div style="{value_style}">{o3}</div>
-
+<div style="{value_style}">{o3} ppm</div>
 </div>
 
 <div>
-
 <div style="{label_style}">PM2.5</div>
-<div style="{value_style}">{pm25}</div>
+<div style="{value_style}">{pm25} ㎍/㎥</div>
 
 <div style="{label_style}">NO₂</div>
-<div style="{value_style}">{no2}</div>
-
+<div style="{value_style}">{no2} ppm</div>
 </div>
 
 <div>
-
 <div style="{label_style}">CO</div>
-<div style="{value_style}">{co}</div>
+<div style="{value_style}">{co} ppm</div>
 
 <div style="{label_style}">SO₂</div>
-<div style="{value_style}">{so2}</div>
-
+<div style="{value_style}">{so2} ppm</div>
 </div>
 
 </div>
@@ -467,12 +362,13 @@ margin-top:20px;
         unsafe_allow_html=True
     )
 
-# ============================================
-# 3열 : 문화재 현황
-# ============================================
 
+# ============================================
+# 3열 : 문화재 현황 (기존 그대로)
+# ============================================
 with right:
-
+    st.markdown("<div style='height: 42px;'></div>", unsafe_allow_html=True)
+    
     st.markdown(
         f"""
 <div style="{card_style}; position:relative;">
@@ -493,22 +389,8 @@ with right:
 {len(df)}개
 </div>
 
-<br>
-
-<div style="{label_style}">
-
 </div>
 
-<div style="{value_style}">
-
-</div>
-
-</div>
-
-<div>
-- 
-</div>
-                    
 </div>
         """,
         unsafe_allow_html=True
