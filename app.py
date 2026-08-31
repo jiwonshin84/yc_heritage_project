@@ -8,12 +8,15 @@ import requests
 import streamlit as st
 
 # ============================================
-# API KEY 및 기본 설정 (명세서 기반 수정)
+# API KEY 및 기본 설정
 # ============================================
-# 기상청 API 허브 인증키 (apihub.kma.go.kr 용 authKey)
-SERVICE_KEY = "feb2bfabd299d5d05e89c7aec49ba7e706112603e76549a92e868bd86ec60323"
+# 기상청 API 허브 전용 인증키
+KMA_AUTH_KEY = "XDdcOK8kT5C3XDivJN-Qtg"
 
-# 기상청 AWS 매분자료 조회 API URL (기상청 API 허브 URL)
+# 한국환경공단 API 인증키
+AIR_SERVICE_KEY = "feb2bfabd299d5d05e89c7aec49ba7e706112603e76549a92e868bd86ec60323"
+
+# 기상청 AWS 매분자료 조회 API URL
 AWS_MIN_URL = "https://apihub.kma.go.kr/api/typ01/cgi-bin/url/nph-aws2_min"
 
 # 한국환경공단 시도별 실시간 대기오염 측정 정보 API URL
@@ -76,12 +79,11 @@ def get_aws_weather_data(stn_id, api_tm):
     raw_text = ""
     
     try:
-        # 명세서에 명시된 파라미터 적용 (stn, tm2, disp=1, help=0)
         params = {
-            "authKey": SERVICE_KEY,
+            "authKey": KMA_AUTH_KEY,
             "stn": str(stn_id),
             "tm2": api_tm,
-            "disp": "1",  # 쉼표(,) 구분자 형식으로 응답 받기
+            "disp": "1",  # 쉼표(,) 구분자 형식
             "help": "0"
         }
         response = requests.get(AWS_MIN_URL, params=params, timeout=10)
@@ -90,12 +92,11 @@ def get_aws_weather_data(stn_id, api_tm):
             raw_text = response.text
             lines = [line.strip() for line in raw_text.split("\n") if line.strip() and not line.startswith("#")]
             
-            # 텍스트 응답 분석 (disp=1 적용 시 쉼표로 구분됨)
             if lines:
                 data_line = lines[-1]
                 parts = [p.strip() for p in data_line.split(",")]
                 
-                # 명세서 순서: TM, STN, WD1, WS1, WDS, WSS, WD10, WS10, TA, RE, RN-15m, RN-60m, RN-12H, RN-DAY, HM, ...
+                # 명세 순서: TM, STN, WD1, WS1, WDS, WSS, WD10, WS10, TA, RE, RN-15m, RN-60m, RN-12H, RN-DAY, HM, ...
                 if len(parts) >= 15:
                     aws_data["wind_dir"] = degree_to_direction(parts[2])  # WD1
                     aws_data["wind_speed"] = safe_val(parts[3])          # WS1
@@ -118,7 +119,7 @@ def get_air_pollution_data():
     raw_json = {}
     
     try:
-        decoded_key = urllib.parse.unquote(SERVICE_KEY)
+        decoded_key = urllib.parse.unquote(AIR_SERVICE_KEY)
         air_params = {
             "serviceKey": decoded_key,
             "returnType": "json",
