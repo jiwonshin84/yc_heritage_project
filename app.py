@@ -75,15 +75,15 @@ def safe_val(val, default="-"):
     return str(val)
 
 # ============================================
-# 데이터 수집 함수 (AWS & 대기오염)
+# 데이터 수집 함수 (AWS & 대기오염 + 캐싱 적용)
 # ============================================
+@st.cache_data(ttl=60)
 def get_aws_weather_data(stn_id):
-    """기상청 API 허브(nph-aws2_min)를 이용한 최신 1분 관측 데이터 수집"""
+    """기상청 API 허브(nph-aws2_min)를 이용한 최신 1분 관측 데이터 수집 (60초 캐싱)"""
     aws_data = {
         "temp": "-", "humidity": "-", "rainfall": "-", 
         "wind_speed": "-", "wind_dir": "-", "obs_time": "-"
     }
-    raw_text = ""
     
     try:
         params = {
@@ -95,14 +95,12 @@ def get_aws_weather_data(stn_id):
         response = requests.get(AWS_MIN_URL, params=params, timeout=10)
         
         if response.status_code == 200:
-            raw_text = response.text
-            lines = [line.strip() for line in raw_text.split("\n") if line.strip() and not line.startswith("#")]
+            lines = [line.strip() for line in response.text.split("\n") if line.strip() and not line.startswith("#")]
             
             if lines:
                 data_line = lines[-1]
                 parts = [p.strip() for p in data_line.split(",")]
                 
-                # 순서: TM, STN, WD1, WS1, WDS, WSS, WD10, WS10, TA, RE, RN-15m, RN-60m, RN-12H, RN-DAY, HM, ...
                 if len(parts) >= 15:
                     aws_data["obs_time"] = parts[0]                      # TM (관측시각)
                     aws_data["wind_dir"] = degree_to_direction(parts[2])  # WD1 (1분 평균 풍향)
@@ -110,20 +108,18 @@ def get_aws_weather_data(stn_id):
                     aws_data["temp"] = safe_val(parts[8])                # TA (1분 평균 기온)
                     aws_data["rainfall"] = safe_val(parts[10], "0.0")   # RN-15m
                     aws_data["humidity"] = safe_val(parts[14])            # HM (분 평균 상대습도)
-        else:
-            raw_text = f"HTTP Error {response.status_code}: {response.text}"
-    except Exception as e:
-        raw_text = f"Exception: {str(e)}"
+    except Exception:
+        pass
         
-    return aws_data, raw_text
+    return aws_data
 
+@st.cache_data(ttl=600)
 def get_air_pollution_data():
-    """한국환경공단 영천 대기오염 측정 정보 데이터 수집"""
+    """한국환경공단 영천 대기오염 측정 정보 데이터 수집 (10분 캐싱)"""
     air_res = {
         "pm10": "-", "pm25": "-", "o3": "-", 
         "no2": "-", "co": "-", "so2": "-", "data_time": "-"
     }
-    raw_json = {}
     
     try:
         decoded_key = urllib.parse.unquote(AIR_SERVICE_KEY)
@@ -138,8 +134,7 @@ def get_air_pollution_data():
         response = requests.get(AIR_URL, params=air_params, timeout=15)
         
         if response.status_code == 200:
-            raw_json = response.json()
-            items = raw_json.get("response", {}).get("body", {}).get("items", [])
+            items = response.json().get("response", {}).get("body", {}).get("items", [])
             
             target = None
             for item in items:
@@ -155,12 +150,10 @@ def get_air_pollution_data():
                 air_res["no2"] = safe_val(target.get("no2Value"))
                 air_res["co"] = safe_val(target.get("coValue"))
                 air_res["so2"] = safe_val(target.get("so2Value"))
-        else:
-            raw_json = {"error": f"HTTP Status Code {response.status_code}"}
-    except Exception as e:
-        raw_json = {"error": str(e)}
+    except Exception:
+        pass
         
-    return air_res, raw_json
+    return air_res
 
 # ============================================
 # 데이터 수집 실행
@@ -168,14 +161,10 @@ def get_air_pollution_data():
 current_kst = get_current_kst_time()
 
 weather_results = {}
-debug_aws_responses = {}
-
 for name, stn_id in STATION_MAP.items():
-    w_data, raw_res = get_aws_weather_data(stn_id)
-    weather_results[name] = w_data
-    debug_aws_responses[name] = raw_res
+    weather_results[name] = get_aws_weather_data(stn_id)
 
-air_data, debug_air_response = get_air_pollution_data()
+air_data = get_air_pollution_data()
 
 # ============================================
 # UI 레이아웃 구성
@@ -189,7 +178,7 @@ st.markdown("<h1 style='font-size:30px;'>🏛 공공 환경 데이터 기반 영
 st.markdown("영천 지역 문화재 보존 관리를 위한 실시간 기상 관측 데이터(AWS) 및 대기 오염 현황 모니터링 페이지입니다.")
 
 # 자동 새로고침 상태 안내 표시
-st.info(f"🔄 **실시간 자동 갱신 중** (마지막 화면 동기화: {current_kst}) — 1분마다 최신 관측값으로 자동 업데이트됩니다.")
+st.info(f"🔄 **실시간 자동 동기화 중** (마지막 화면 동기화: {current_kst}) — 관측소 수집 전송 지연에 따라 실측 시각과 차이가 발생할 수 있습니다.")
 
 st.divider()
 
@@ -258,7 +247,7 @@ with bot_left:
             <div style="{label_style}">SO₂ (아황산가스)</div><div style="{value_style}">{air_data['so2']} ppm</div>
         </div>
     </div>
-    <div style="{time_style}">⏱ 측정 시각 : {air_data['data_time']}</div>
+    <div style="{time_style}">⏱ 측정 시각 : {air_data['data_time']} (1시간 단위 제공)</div>
 </div>
         """,
         unsafe_allow_html=True
@@ -281,16 +270,3 @@ with bot_right:
 
 st.divider()
 st.caption("선화여고 - 영천 헤리티지 AI 탐구단")
-
-# --------------------------------------------
-# 3행 : 개발자 디버깅용 확장 섹션
-# --------------------------------------------
-with st.expander("🔍 API 응답 데이터 디버깅 (개발자용 확인)"):
-    st.write("페이지 갱신 횟수 (Auto-Refresh Count):", count)
-    st.write("현재 시스템 시각:", current_kst)
-    
-    st.subheader("1. 기상청 AWS 최신 1분 원본 데이터 (영천 종합)")
-    st.code(debug_aws_responses.get("영천(종합)", ""), language="text")
-    
-    st.subheader("2. 환경공단 대기오염 원본 데이터")
-    st.json(debug_air_response)
