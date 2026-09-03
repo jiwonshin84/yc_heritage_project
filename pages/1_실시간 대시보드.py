@@ -252,8 +252,8 @@ label_style = "font-size:12px; color:#6b7280; margin-bottom:2px;"
 map_col, right_col = st.columns([1.8, 1.0])
 
 with map_col:
-  # 지도 중심을 더 남쪽으로 이동 (위도 값을 낮춰서 지도를 아래로 내림)
-  m = folium.Map(location=[35.8500, 128.8400], zoom_start=10.5)
+  # 신호리 부근 좌표로 중심 복원
+  m = folium.Map(location=[35.9400, 129.0200], zoom_start=10.5)
 
   # 상자 크기 (고정값으로 앵커 계산에 사용)
   BOX_W = 170
