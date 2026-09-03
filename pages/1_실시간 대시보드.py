@@ -265,7 +265,7 @@ with map_col:
   )
 
   # 영천시 전체 관측소(신녕, 청통, 화북, 영천종합)가 모두 들어오도록 중심 좌표/줌 레벨 조정
-  m = folium.Map(location=[36.07, 128.77], zoom_start=10.5)
+  m = folium.Map(location=[31, 128.77], zoom_start=10.5)
 
   # 상자 크기 (고정값으로 앵커 계산에 사용)
   BOX_W = 170
