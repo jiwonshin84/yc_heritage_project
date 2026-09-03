@@ -239,9 +239,9 @@ st.info(
 )
 # 카드 스타일 정의
 title_style = (
-    "font-size:18px; font-weight:700; margin-bottom:6px; color:#1f2937;"
+    "font-size:20px; font-weight:700; margin-bottom:6px; color:#1f2937;"
 )
-label_style = "font-size:15px; color:#6b7280; margin-bottom:2px;"
+label_style = "font-size:18px; color:#6b7280; margin-bottom:2px;"
 
 # --------------------------------------------
 # 1행 : [좌측] 실시간 날씨 지도 & [우측] 대기오염 및 문화재 현황
