@@ -35,10 +35,10 @@ AWS_MIN_URL = "https://apihub.kma.go.kr/api/typ01/cgi-bin/url/nph-aws2_min"
 # 한국환경공단 시도별 실시간 대기오염 측정 정보 API URL
 AIR_URL = "http://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty"
 
-# 영천 주요 관측소 정보 (지점 번호 및 위경도 좌표 추가)
+# 영천 주요 관측소 정보 (지점 번호 및 위경도 좌표 정의)
 STATION_MAP = {
     "영천(종합)": {"id": "281", "lat": 35.97742, "lon": 128.9514},
-    "신령": {"id": "853", "lat": 36.0520, "lon": 128.7650},  # 대략적인 위치 좌표
+    "신령": {"id": "853", "lat": 36.0520, "lon": 128.7650},
     "청통": {"id": "854", "lat": 35.9720, "lon": 128.8310},
     "화북": {"id": "855", "lat": 36.1600, "lon": 128.9300},
 }
@@ -193,10 +193,18 @@ weather_results = {}
 map_data_list = []
 
 for name, info in STATION_MAP.items():
-  weather_results[name] = get_aws_weather_data(info["id"])
-  map_data_list.append(
-      {"name": name, "lat": info["lat"], "lon": info["lon"]}
-  )
+  w_data = get_aws_weather_data(info["id"])
+  weather_results[name] = w_data
+  # 지도 표시를 위한 데이터프레임용 리스트 구성 (기온/습도/강수량/풍속 포함)
+  map_data_list.append({
+      "name": name,
+      "lat": info["lat"],
+      "lon": info["lon"],
+      "temp": f"{w_data['temp']}°C",
+      "humidity": f"{w_data['humidity']}%",
+      "rainfall": f"{w_data['rainfall']}mm",
+      "wind_speed": f"{w_data['wind_speed']}m/s",
+  })
 
 air_data = get_air_pollution_data()
 df_map = pd.DataFrame(map_data_list)
@@ -240,51 +248,56 @@ value_style = (
 time_style = "font-size:12px; color:#9ca3af; margin-top:15px;"
 
 # --------------------------------------------
-# 1행 : 영천 지역 관측소 지도 및 위치 현황
+# 1행 : [좌측] 지도 시각화 & [우측] 대기 환경 현황 배치
 # --------------------------------------------
 st.markdown(
-    '<h3 style="font-size:22px; margin-bottom:15px;">🗺 영천시 기상 관측소'
-    " 위치 현황</h3>",
+    '<h3 style="font-size:22px; margin-bottom:15px;">🗺 영천시 지역별 기상 지도'
+    " 및 대기 환경</h3>",
     unsafe_allow_html=True,
 )
-map_col, info_col = st.columns([1.5, 1])
+map_col, air_col = st.columns([1.3, 1.0])
 
 with map_col:
   st.markdown(
-      "<p style='font-size:14px; color:#4b5563; margin-bottom:8px;'>영천시 내"
-      " 주요 AWS(자동기상관측장비) 설치 위치입니다.</p>",
+      "<p style='font-size:14px; color:#4b5563; margin-bottom:8px;'>📍 영천시"
+      " 주요 AWS(자동기상관측장비) 위치 분포</p>",
       unsafe_allow_html=True,
   )
-  # Streamlit 기본 지도 컴포넌트 활용 (영천시 중심 좌표 기준)
+  # Streamlit 기본 지도 컴포넌트 출력
   st.map(df_map, latitude="lat", longitude="lon", zoom=10, size=50)
 
-with info_col:
+with air_col:
   st.markdown(
-      "<p style='font-size:14px; color:#4b5563; margin-bottom:8px;'>📍 <b>관측소"
-      " 안내</b></p>",
-      unsafe_allow_html=True,
-  )
-  st.markdown(
-      """
-    <div style="background-color:#f8f9fa; padding:15px; border-radius:12px; border:1px solid #e5e7eb; font-size:14px; color:#374151; line-height:1.6;">
-    • <b>영천(종합)</b>: 시내권 통합 관측소<br>
-    • <b>신령</b>: 북서부 지역 관측소<br>
-    • <b>청통</b>: 서남부 지역 관측소<br>
-    • <b>화북</b>: 북동부 산악(보현산) 인근 관측소
+      f"""
+<div style="{bottom_card_style}">
+    <div style="{title_style}">🌫 대기 환경 현황 (영천 측정소)</div>
+    <hr style="margin: 8px 0;">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;">
+        <div>
+            <div style="{label_style}">PM10 (미세먼지)</div><div style="{value_style}">{air_data['pm10']} ㎍/㎥</div>
+            <div style="{label_style}">O₃ (오존)</div><div style="{value_style}">{air_data['o3']} ppm</div>
+            <div style="{label_style}">CO (일산화탄소)</div><div style="{value_style}">{air_data['co']} ppm</div>
+        </div>
+        <div>
+            <div style="{label_style}">PM2.5 (초미세먼지)</div><div style="{value_style}">{air_data['pm25']} ㎍/㎥</div>
+            <div style="{label_style}">NO₂ (이산화질소)</div><div style="{value_style}">{air_data['no2']} ppm</div>
+            <div style="{label_style}">SO₂ (아황산가스)</div><div style="{value_style}">{air_data['so2']} ppm</div>
+        </div>
     </div>
+    <div style="{time_style}">⏱ 측정 시각 : {air_data['data_time']} (1시간 단위 제공)</div>
+</div>
     """,
       unsafe_allow_html=True,
   )
 
-st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-st.divider()
+st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True)
 
 # --------------------------------------------
-# 2행 : 기상 관측소 실시간 현황 (최신 1분 데이터)
+# 2행 : 기상 관측소 실시간 상세 현황 카드 (기온, 습도, 강수량, 풍속)
 # --------------------------------------------
 st.markdown(
     '<h3 style="font-size:22px; margin-bottom:15px;">🌦 영천시 지역별 실시간 기상'
-    " 현황 (AWS 1분 관측)</h3>",
+    " 상세 현황 (AWS 1분 관측)</h3>",
     unsafe_allow_html=True,
 )
 aws_cols = st.columns(4)
@@ -301,7 +314,7 @@ for idx, (stn_name, w_data) in enumerate(weather_results.items()):
     st.markdown(
         f"""
 <div style="{aws_card_style}">
-    <div style="{title_style}">📍 {stn_name}</div>
+    <div style="{title_style}">📍 {stn_name} 관측소</div>
     <hr style="margin: 8px 0;">
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px;">
         <div><div style="{label_style}">🌡 기온 (1분)</div><div style="{value_style}">{w_data['temp']} °C</div></div>
@@ -318,53 +331,24 @@ for idx, (stn_name, w_data) in enumerate(weather_results.items()):
 st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True)
 
 # --------------------------------------------
-# 3행 : 대기오염 현황 & 문화재 현황
+# 3행 : 문화재 현황 요약
 # --------------------------------------------
 st.markdown(
-    '<h3 style="font-size:22px; margin-bottom:15px;">🌿 대기 환경 및 문화재'
-    " 현황</h3>",
+    '<h3 style="font-size:22px; margin-bottom:15px;">🏛 문화재 보존 관리 현황</h3>',
     unsafe_allow_html=True,
 )
-bot_left, bot_right = st.columns([2.2, 1.0])
-
-with bot_left:
+col_heritage = st.columns(1)[0]
+with col_heritage:
   st.markdown(
       f"""
-<div style="{bottom_card_style}">
-    <div style="{title_style}">🌫 대기오염 현황 (영천 측정소)</div>
+<div style="background-color:#f8f9fa; padding:20px; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,0.04);">
+    <div style="{title_style}">📊 연계 문화재 데이터 분석 개요</div>
     <hr style="margin: 8px 0;">
-    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-top:12px;">
-        <div>
-            <div style="{label_style}">PM10 (미세먼지)</div><div style="{value_style}">{air_data['pm10']} ㎍/㎥</div>
-            <div style="{label_style}">O₃ (오존)</div><div style="{value_style}">{air_data['o3']} ppm</div>
-        </div>
-        <div>
-            <div style="{label_style}">PM2.5 (초미세먼지)</div><div style="{value_style}">{air_data['pm25']} ㎍/㎥</div>
-            <div style="{label_style}">NO₂ (이산화질소)</div><div style="{value_style}">{air_data['no2']} ppm</div>
-        </div>
-        <div>
-            <div style="{label_style}">CO (일산화탄소)</div><div style="{value_style}">{air_data['co']} ppm</div>
-            <div style="{label_style}">SO₂ (아황산가스)</div><div style="{value_style}">{air_data['so2']} ppm</div>
-        </div>
-    </div>
-    <div style="{time_style}">⏱ 측정 시각 : {air_data['data_time']} (1시간 단위 제공)</div>
-</div>
-        """,
-      unsafe_allow_html=True,
-  )
-
-with bot_right:
-  st.markdown(
-      f"""
-<div style="{bottom_card_style}">
-    <div style="{title_style}">🏛 문화재 현황</div>
-    <hr style="margin: 8px 0;">
-    <div style="margin-top:20px;">
-        <div style="{label_style}">분석 문화재 수</div>
-        <div style="font-size:28px; font-weight:700; color:#111827; margin-top:5px;">{len(df)}개</div>
+    <div style="margin-top:10px; font-size:15px; color:#374151;">
+        현재 실시간 환경 모니터링 대상과 연계된 영천 지역 관리 문화재 총 <b>{len(df)}개소</b>에 대한 기상 및 대기오염 영향 분석이 가능합니다.
     </div>
 </div>
-        """,
+    """,
       unsafe_allow_html=True,
   )
 
