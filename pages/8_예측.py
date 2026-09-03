@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import datetime
 import joblib
+import os
 
 st.set_page_config(page_title="최근 7일 위험도 예측", layout="wide")
 
@@ -10,9 +11,13 @@ st.title("🔮 최근 7일 데이터 기반 위험도 예측")
 
 @st.cache_resource
 def load_model():
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    model_path = os.path.join(root_dir, "best_rf_model.pkl")
+    features_path = os.path.join(root_dir, "model_features.pkl")
+    
     try:
-        model = joblib.load("best_rf_model.pkl")
-        features = joblib.load("model_features.pkl")
+        model = joblib.load(model_path)
+        features = joblib.load(features_path)
         return model, features
     except FileNotFoundError:
         return None, None
@@ -20,7 +25,7 @@ def load_model():
 model, feature_cols = load_model()
 
 if model is None:
-    st.warning("⚠️ 학습된 모델이 존재하지 않습니다. 먼저 사이드바에서 **[1_📊_위험_예측_분류_모델_학습_최적화]** 페이지로 이동해 모델 학습을 완료해 주세요!")
+    st.warning("⚠️ 학습된 모델이 존재하지 않습니다. 먼저 사이드바에서 **[7_위험 예측 분류 모델 학습 최적화]** 페이지로 이동해 모델 학습을 완료해 주세요!")
     st.stop()
 
 ASOS_SERVICE_KEY = "feb2bfabd299d5d05e89c7aec49ba7e706112603e76549a92e868bd86ec60323"
