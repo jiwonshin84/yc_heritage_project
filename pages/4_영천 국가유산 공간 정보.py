@@ -23,29 +23,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# 상단 여백 및 커스텀 CSS
-st.markdown(
-    """
-    <style>
-        .block-container {
-            padding-top: 1rem !important;
-            padding-bottom: 2rem !important;
-        }
-        .stButton>button {
-            text-align: left;
-            border-radius: 8px;
-            padding: 10px;
-            margin-bottom: -5px;
-        }
-        /* 선택된 버튼 스타일 강조 */
-        div[data-testid="column"]:nth-child(2) button[kind="secondary"]:focus {
-            border-color: #ff4b4b !important;
-            color: #ff4b4b !important;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+
 
 
 # =================================================
