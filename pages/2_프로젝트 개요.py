@@ -1,5 +1,16 @@
 import streamlit as st
-
+# 상단 기본 여백을 줄이되, 사이드바(메뉴)는 유지하도록 설정
+st.markdown(
+    """
+    <style>
+        .block-container {
+            padding-top: 1rem !important;
+            padding-bottom: 2rem !important;
+        }
+    </style>
+""",
+    unsafe_allow_html=True,
+)
 st.title("📖 프로젝트 개요")
 st.divider()
 # ==========================================================
