@@ -236,7 +236,7 @@ value_style = (
 time_style = "font-size:12px; color:#9ca3af; margin-top:15px;"
 
 # --------------------------------------------
-# 1행 : [좌측] 실시간 날씨 지도(정보 상시 노출) & [우측] 대기오염 및 문화재 현황
+# 1행 : [좌측] 실시간 날씨 지도(확대된 뷰 & 정보 상시 노출) & [우측] 대기오염 및 문화재 현황
 # --------------------------------------------
 st.markdown(
     '<h3 style="font-size:22px; margin-bottom:15px;">🗺 영천시 지역별 실시간 기상'
@@ -247,13 +247,13 @@ map_col, right_col = st.columns([1.4, 1.0])
 
 with map_col:
   st.markdown(
-      "<p style='font-size:14px; color:#4b5563; margin-bottom:8px;'>📍 영천 지역"
-      " 관측소별 기온, 습도, 강수량, 풍속 실시간 상시 표시 지도</p>",
+      "<p style='font-size:14px; color:#4b5563; margin-bottom:8px;'>📍 관측소별"
+      " 상세 날씨 정보(기온·습도·강수·풍속)가 겹치지 않도록 확대된 지도</p>",
       unsafe_allow_html=True,
   )
 
-  # 영천시 중심 좌표 기준으로 Folium 지도 생성
-  m = folium.Map(location=[36.01, 128.89], zoom_start=10)
+  # 영천시 중심 좌표 기준, 줌 레벨을 10 -> 11로 한번 더 확대
+  m = folium.Map(location=[36.03, 128.87], zoom_start=11)
 
   # 각 관측소별 상시 노출될 HTML 박스 아이콘 설정
   for name, info in STATION_MAP.items():
@@ -288,10 +288,7 @@ with map_col:
         icon=folium.DivIcon(
             html=label_html,
             icon_size=(140, 90),
-            icon_anchor=(
-                70,
-                45,
-            ),  # 마커 중심을 기준으로 박스가 위치하도록 조정
+            icon_anchor=(70, 45),
         ),
     ).add_to(m)
 
