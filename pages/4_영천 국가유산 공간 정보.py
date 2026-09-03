@@ -244,7 +244,7 @@ with map_col:
   folium.LayerControl(collapsed=False).add_to(m)
 
   # 지도 출력
-  st_folium(m, width="100%", height=720, key="gis_map")
+  st_folium(m, width="100%", height=400, key="gis_map")
 
 with list_col:
   st.subheader("📋 유산 목록")
