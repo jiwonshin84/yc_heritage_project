@@ -16,7 +16,7 @@ st.set_page_config(
 
 st.markdown("""
 <h1 style="font-size:34px; margin-bottom:5px;">
-영천 국가유산 공간 정보
+🏛️영천 국가유산 공간 정보
 </h1>
 <div style="font-size:17px; color:#6b7280; margin-bottom:20px;">
 영천 국가유산을 검색해보세요
