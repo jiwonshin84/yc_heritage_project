@@ -230,7 +230,7 @@ title_style = (
 label_style = "font-size:13px; color:#6b7280; margin-bottom:2px;"
 
 # --------------------------------------------
-# 1행 : [좌측] 실시간 날씨 지도(정보 상자 내부 정렬 개편) & [우측] 대기오염 및 문화재 현황
+# 1행 : [좌측] 실시간 날씨 지도(영천시 집중 줌 설정) & [우측] 대기오염 및 문화재 현황
 # --------------------------------------------
 st.markdown(
     '<h3 style="font-size:22px; margin-bottom:15px;">🗺 영천시 지역별 실시간 기상'
@@ -241,13 +241,13 @@ map_col, right_col = st.columns([1.4, 1.0])
 
 with map_col:
   st.markdown(
-      "<p style='font-size:14px; color:#4b5563; margin-bottom:8px;'>📍 관측소별"
-      " 상세 날씨 정보가 겹치지 않도록 분산 배치된 확대 지도</p>",
+      "<p style='font-size:14px; color:#4b5563; margin-bottom:8px;'>📍 영천시"
+      " 관측소별 상세 날씨 정보 지도</p>",
       unsafe_allow_html=True,
   )
 
-  # 영천시 중심 좌표 기준, 줌 레벨 12
-  m = folium.Map(location=[36.01, 128.87], zoom_start=12)
+  # 영천시의 실제 중심 좌표(위도 36.015, 경도 128.855)로 맞추고 줌 레벨을 11로 설정하여 영천시 영역에 집중시킴
+  m = folium.Map(location=[36.015, 128.855], zoom_start=11)
 
   # 각 관측소별 상시 노출될 HTML 박스 아이콘 설정
   for name, info in STATION_MAP.items():
@@ -275,7 +275,6 @@ with map_col:
       offset_style = "margin-left: -85px; margin-top: -115px;"
       anchor_val = (100, 115)
 
-    # 기온/습도 한 줄, 강수/풍속 한 줄, 맨 아래 관측 시각이 들어가도록 구성한 HTML
     label_html = f"""
         <div style="
             background-color: white; 
