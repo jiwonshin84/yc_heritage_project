@@ -264,8 +264,8 @@ with map_col:
       unsafe_allow_html=True,
   )
 
-  # 화북(북쪽)과 신녕(서쪽)이 완전히 들어오도록 줌 레벨 조정
-  m = folium.Map(location=[36.08, 128.73], zoom_start=9.0)
+  # 💡 1. 영천시 전체 관측소(신녕, 청통, 화북, 영천종합)가 모두 들어오도록 중심 좌표 이동 및 줌 레벨 조정 (zoom_start=9.5 또는 9)
+  m = folium.Map(location=[36.07, 128.77], zoom_start=9.8)
 
   # 각 상자 배치
   for name, info in STATION_MAP.items():
