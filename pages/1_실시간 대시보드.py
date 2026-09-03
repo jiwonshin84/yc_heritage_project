@@ -282,7 +282,7 @@ with map_col:
             border: 2px solid #1e3a8a; 
             border-radius: 8px; 
             padding: 6px 10px; 
-            font-size: 12px; 
+            font-size: 11px; 
             font-weight: bold; 
             color: #1f2937; 
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
