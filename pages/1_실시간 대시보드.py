@@ -240,6 +240,8 @@ st.info(
     " 수집 전송 지연에 따라 실측 시각과 차이가 발생할 수 있습니다."
 )
 
+st.divider()
+
 # 카드 스타일 정의
 title_style = (
     "font-size:18px; font-weight:700; margin-bottom:8px; color:#1f2937;"
@@ -266,7 +268,7 @@ with map_col:
   # 영천시 중심 설정 및 줌 레벨 10
   m = folium.Map(location=[36.06, 128.85], zoom_start=10)
 
-  # 💡 각 관측소별 상자가 겹치지 않도록 방향별로 확실히 분산 배치
+  # 각 관측소별 상시 노출될 HTML 박스 아이콘 설정
   for name, info in STATION_MAP.items():
     w_data = weather_results[name]
 
@@ -278,16 +280,16 @@ with map_col:
           f" {obs_time_fmt[8:10]}:{obs_time_fmt[10:12]}"
       )
 
-    if name == "영천(종합)":  # 남쪽 중앙 위치 -> 상자를 위쪽으로 배치
+    if name == "영천(종합)":  # 영천(종합) 상자는 기존 위치 유지
       offset_style = "margin-left: -85px; margin-top: -115px;"
       anchor_val = (85, 115)
-    elif name == "청통":  # 서쪽 방향 위치 -> 상자를 우측 상단으로 배치
-      offset_style = "margin-left: 10px; margin-top: -110px;"
-      anchor_val = (0, 110)
-    elif name == "신령":  # 북서쪽 위치 -> 상자를 우측 아래로 배치
+    elif name == "청통":  # 💡 청통 상자만 오른쪽으로 더 이동 (margin-left 값을 양수(더 오른쪽)로 크게 수정)
+      offset_style = "margin-left: 40px; margin-top: -110px;"
+      anchor_val = (-40, 110)
+    elif name == "신령":
       offset_style = "margin-left: 10px; margin-top: 10px;"
       anchor_val = (0, 0)
-    else:  # 화북 (북동쪽 위치) -> 상자를 좌측 아래로 배치
+    else:  # 화북
       offset_style = "margin-left: -180px; margin-top: 10px;"
       anchor_val = (180, 0)
 
