@@ -4,6 +4,7 @@ import urllib.parse
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+import pydeck as pdk
 import requests
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
@@ -195,15 +196,17 @@ map_data_list = []
 for name, info in STATION_MAP.items():
   w_data = get_aws_weather_data(info["id"])
   weather_results[name] = w_data
-  # 지도 표시를 위한 데이터프레임용 리스트 구성 (기온/습도/강수량/풍속 포함)
+
+  # Pydeck 지도 시각화용 데이터 구성 (한글 지역명 및 기상 정보 문자열 결합)
   map_data_list.append({
       "name": name,
       "lat": info["lat"],
       "lon": info["lon"],
-      "temp": f"{w_data['temp']}°C",
-      "humidity": f"{w_data['humidity']}%",
-      "rainfall": f"{w_data['rainfall']}mm",
-      "wind_speed": f"{w_data['wind_speed']}m/s",
+      "text": (
+          f"[{name}]\n기온: {w_data['temp']}°C\n습도:"
+          f" {w_data['humidity']}%\n강수: {w_data['rainfall']}mm\n풍속:"
+          f" {w_data['wind_speed']}m/s"
+      ),
   })
 
 air_data = get_air_pollution_data()
@@ -248,52 +251,107 @@ value_style = (
 time_style = "font-size:12px; color:#9ca3af; margin-top:15px;"
 
 # --------------------------------------------
-# 1행 : [좌측] 지도 시각화 & [우측] 대기 환경 현황 배치
+# 1행 : [좌측] 한글 실시간 기상 정보 지도 & [우측] 대기오염 및 문화재 현황
 # --------------------------------------------
 st.markdown(
-    '<h3 style="font-size:22px; margin-bottom:15px;">🗺 영천시 지역별 기상 지도'
-    " 및 대기 환경</h3>",
+    '<h3 style="font-size:22px; margin-bottom:15px;">🗺 영천시 지역별 실시간 기상'
+    " 지도 및 대기/문화재 현황</h3>",
     unsafe_allow_html=True,
 )
-map_col, air_col = st.columns([1.3, 1.0])
+map_col, right_col = st.columns([1.4, 1.0])
 
 with map_col:
   st.markdown(
-      "<p style='font-size:14px; color:#4b5563; margin-bottom:8px;'>📍 영천시"
-      " 주요 AWS(자동기상관측장비) 위치 분포</p>",
+      "<p style='font-size:14px; color:#4b5563; margin-bottom:8px;'>📍 관측소별"
+      " 위치 및 1분 실시간 기상 데이터 시각화</p>",
       unsafe_allow_html=True,
   )
-  # Streamlit 기본 지도 컴포넌트 출력
-  st.map(df_map, latitude="lat", longitude="lon", zoom=10, size=50)
 
-with air_col:
+  # Pydeck을 이용해 한글 지명 및 실시간 데이터 레이어 구성
+  layer_scatter = pdk.Layer(
+      "ScatterPlotLayer",
+      data=df_map,
+      get_position=["lon", "lat"],
+      get_color=[30, 144, 255, 200],  # 파란색 마커
+      get_radius=1500,
+      pickable=True,
+  )
+
+  layer_text = pdk.Layer(
+      "TextLayer",
+      data=df_map,
+      get_position=["lon", "lat"],
+      get_text="text",
+      get_size=13,
+      get_color=[20, 20, 20, 255],
+      get_alignment_baseline="'bottom'",
+      get_pixel_offset=[0, -15],
+  )
+
+  # 영천시 중심 기준 뷰 설정 (Mapbox 기본 영어 지명을 보완하기 위해 한글 레이블 오버레이 결합)
+  view_state = pdk.ViewState(
+      latitude=36.01, longitude=128.89, zoom=10.2, pitch=0
+  )
+
+  r = pdk.Deck(
+      layers=[layer_scatter, layer_text],
+      initial_view_state=view_state,
+      tooltip={
+          "html": "<b>관측소:</b> {name}<br/><b>상세정보:</b><br/>{text}",
+          "style": {
+              "backgroundColor": "steelblue",
+              "color": "white",
+              "font-family": "sans-serif",
+              "padding": "8px",
+          },
+      },
+  )
+  st.pydeck_chart(r, use_container_width=True)
+
+with right_col:
+  # 1. 대기현황 카드
   st.markdown(
       f"""
-<div style="{bottom_card_style}">
-    <div style="{title_style}">🌫 대기 환경 현황 (영천 측정소)</div>
-    <hr style="margin: 8px 0;">
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;">
+<div style="background-color:#f8f9fa; padding:18px; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,0.04); margin-bottom:15px;">
+    <div style="{title_style}">🌫 대기오염 현황 (영천 측정소)</div>
+    <hr style="margin: 6px 0;">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px;">
         <div>
-            <div style="{label_style}">PM10 (미세먼지)</div><div style="{value_style}">{air_data['pm10']} ㎍/㎥</div>
-            <div style="{label_style}">O₃ (오존)</div><div style="{value_style}">{air_data['o3']} ppm</div>
-            <div style="{label_style}">CO (일산화탄소)</div><div style="{value_style}">{air_data['co']} ppm</div>
+            <div style="{label_style}">PM10 (미세먼지)</div><div style="font-size:16px; font-weight:700; color:#111827; margin-bottom:6px;">{air_data['pm10']} ㎍/㎥</div>
+            <div style="{label_style}">O₃ (오존)</div><div style="font-size:16px; font-weight:700; color:#111827; margin-bottom:6px;">{air_data['o3']} ppm</div>
+            <div style="{label_style}">CO (일산화탄소)</div><div style="font-size:16px; font-weight:700; color:#111827;">{air_data['co']} ppm</div>
         </div>
         <div>
-            <div style="{label_style}">PM2.5 (초미세먼지)</div><div style="{value_style}">{air_data['pm25']} ㎍/㎥</div>
-            <div style="{label_style}">NO₂ (이산화질소)</div><div style="{value_style}">{air_data['no2']} ppm</div>
-            <div style="{label_style}">SO₂ (아황산가스)</div><div style="{value_style}">{air_data['so2']} ppm</div>
+            <div style="{label_style}">PM2.5 (초미세먼지)</div><div style="font-size:16px; font-weight:700; color:#111827; margin-bottom:6px;">{air_data['pm25']} ㎍/㎥</div>
+            <div style="{label_style}">NO₂ (이산화질소)</div><div style="font-size:16px; font-weight:700; color:#111827; margin-bottom:6px;">{air_data['no2']} ppm</div>
+            <div style="{label_style}">SO₂ (아황산가스)</div><div style="font-size:16px; font-weight:700; color:#111827;">{air_data['so2']} ppm</div>
         </div>
     </div>
-    <div style="{time_style}">⏱ 측정 시각 : {air_data['data_time']} (1시간 단위 제공)</div>
+    <div style="font-size:11px; color:#9ca3af; margin-top:10px;">⏱ 측정 시각 : {air_data['data_time']}</div>
 </div>
     """,
       unsafe_allow_html=True,
   )
 
-st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True)
+  # 2. 대기현황 밑에 위치한 문화재 수 카드
+  st.markdown(
+      f"""
+<div style="background-color:#f8f9fa; padding:18px; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,0.04);">
+    <div style="{title_style}">🏛 문화재 보존 관리 현황</div>
+    <hr style="margin: 6px 0;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+        <div style="{label_style}">실시간 모니터링 대상 문화재 총 수</div>
+        <div style="font-size:24px; font-weight:700; color:#1f2937;">{len(df)}개소</div>
+    </div>
+</div>
+    """,
+      unsafe_allow_html=True,
+  )
+
+st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
 
 # --------------------------------------------
-# 2행 : 기상 관측소 실시간 상세 현황 카드 (기온, 습도, 강수량, 풍속)
+# 2행 : 기상 관측소 실시간 상세 카드 (영천(종합), 신령, 청통, 화북)
 # --------------------------------------------
 st.markdown(
     '<h3 style="font-size:22px; margin-bottom:15px;">🌦 영천시 지역별 실시간 기상'
@@ -327,30 +385,6 @@ for idx, (stn_name, w_data) in enumerate(weather_results.items()):
         """,
         unsafe_allow_html=True,
     )
-
-st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True)
-
-# --------------------------------------------
-# 3행 : 문화재 현황 요약
-# --------------------------------------------
-st.markdown(
-    '<h3 style="font-size:22px; margin-bottom:15px;">🏛 문화재 보존 관리 현황</h3>',
-    unsafe_allow_html=True,
-)
-col_heritage = st.columns(1)[0]
-with col_heritage:
-  st.markdown(
-      f"""
-<div style="background-color:#f8f9fa; padding:20px; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,0.04);">
-    <div style="{title_style}">📊 연계 문화재 데이터 분석 개요</div>
-    <hr style="margin: 8px 0;">
-    <div style="margin-top:10px; font-size:15px; color:#374151;">
-        현재 실시간 환경 모니터링 대상과 연계된 영천 지역 관리 문화재 총 <b>{len(df)}개소</b>에 대한 기상 및 대기오염 영향 분석이 가능합니다.
-    </div>
-</div>
-    """,
-      unsafe_allow_html=True,
-  )
 
 st.divider()
 st.caption("선화여고 - 영천 헤리티지 AI 탐구단")
