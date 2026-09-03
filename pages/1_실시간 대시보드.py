@@ -54,10 +54,10 @@ AWS_MIN_URL = "https://apihub.kma.go.kr/api/typ01/cgi-bin/url/nph-aws2_min"
 # 한국환경공단 시도별 실시간 대기오염 측정 정보 API URL
 AIR_URL = "http://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty"
 
-# 관측소 좌표 설정
+# 💡 관측소 좌표 설정 (청통 명칭 복원 및 위치 배치 반영)
 STATION_MAP = {
     "신녕": {"id": "853", "lat": 36.0150, "lon": 128.6100},  # 지도 왼쪽
-    "화산": {"id": "854", "lat": 36.0250, "lon": 128.7800},  # 신녕 오른쪽
+    "청통": {"id": "854", "lat": 36.0250, "lon": 128.7800},  # 신녕 오른쪽
     "화북": {"id": "855", "lat": 36.1700, "lon": 128.9300},  # 지도 위쪽
     "영천(종합)": {
         "id": "281",
@@ -243,9 +243,6 @@ st.info(
     f"🔄 **실시간 자동 동기화 중** (마지막 화면 동기화: {current_kst}) — 관측소"
     " 수집 전송 지연에 따라 실측 시각과 차이가 발생할 수 있습니다."
 )
-
-st.divider()
-
 # 카드 스타일 정의
 title_style = (
     "font-size:16px; font-weight:700; margin-bottom:6px; color:#1f2937;"
@@ -261,7 +258,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 💡 지도가 더 크고 넓게 보이도록 비율을 [1.8, 1.0]으로 조정
+# 지도가 더 크고 넓게 보이도록 비율을 [1.8, 1.0]으로 조정
 map_col, right_col = st.columns([1.8, 1.0])
 
 with map_col:
@@ -289,7 +286,7 @@ with map_col:
     if name == "신녕":  # 왼쪽
       offset_style = "margin-left: -170px; margin-top: -50px;"
       anchor_val = (170, 50)
-    elif name == "화산":  # 신녕 오른쪽
+    elif name == "청통":  # 신녕 오른쪽
       offset_style = "margin-left: 10px; margin-top: -80px;"
       anchor_val = (0, 80)
     elif name == "화북":  # 위쪽
@@ -333,11 +330,10 @@ with map_col:
         ),
     ).add_to(m)
 
-  # 💡 지도 높이도 함께 키워서 더 시원시원하게 표시 (height=460)
+  # 지도 높이 키움 (height=460)
   st_folium(m, width="100%", height=460, key="weather_map")
 
 with right_col:
-  # 💡 우측 카드들의 패딩과 글씨 크기를 약간 줄여서 컴팩트하게 구성
   # 1. 대기현황 카드
   st.markdown(
       f"""
