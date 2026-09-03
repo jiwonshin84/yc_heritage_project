@@ -271,7 +271,7 @@ with map_col:
 
     # 위치 미세 조정
     if name == "신녕":
-      anchor_val = (-80, BOX_H + 60)
+      anchor_val = (-60, BOX_H + 60)
     elif name == "화북":
       anchor_val = (BOX_W - 210, -40)
     elif name == "영천(종합)":
