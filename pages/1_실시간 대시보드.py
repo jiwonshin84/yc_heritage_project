@@ -264,8 +264,12 @@ with map_col:
       unsafe_allow_html=True,
   )
 
-  # 💡 1. 영천시 전체 관측소(신녕, 청통, 화북, 영천종합)가 모두 들어오도록 중심 좌표 이동 및 줌 레벨 조정 (zoom_start=9.5 또는 9)
-  m = folium.Map(location=[36.07, 128.77], zoom_start=9.8)
+  # 영천시 전체 관측소(신녕, 청통, 화북, 영천종합)가 모두 들어오도록 중심 좌표/줌 레벨 조정
+  m = folium.Map(location=[36.07, 128.77], zoom_start=9.5)
+
+  # 상자 크기 (고정값으로 앵커 계산에 사용)
+  BOX_W = 170
+  BOX_H = 100
 
   # 각 상자 배치
   for name, info in STATION_MAP.items():
@@ -278,17 +282,21 @@ with map_col:
           f" {obs_time_fmt[8:10]}:{obs_time_fmt[10:12]}"
       )
 
-    if name == "신녕":
-      offset_style = "margin-left: -170px; margin-top: -50px;"
-      anchor_val = (170, 50)
-    elif name == "청통":
-      offset_style = "margin-left: 10px; margin-top: -80px;"
-      anchor_val = (0, 80)
-    elif name == "화북":
-      offset_style = "margin-left: -85px; margin-top: -130px;"
-      anchor_val = (85, 130)
-    else:  # 영천(종합)
-      offset_style = "margin-left: 10px; margin-top: 10px;"
+    # ------------------------------------------------------------
+    # icon_anchor만으로 상자 위치를 제어 (CSS margin과 이중 적용하지 않음)
+    # 지도 중심(36.07, 128.77) 기준, 각 관측소가 위치한 방향의 "반대쪽"으로
+    # 상자가 펼쳐지도록 하여 지도 밖으로 잘리지 않게 함.
+    #
+    # icon_anchor = (앵커 x, 앵커 y) : 상자(icon_size 기준 좌상단 0,0)에서
+    # 마커가 위치할 지점의 오프셋. 값이 클수록 상자가 반대 방향으로 밀려남.
+    # ------------------------------------------------------------
+    if name == "신녕":  # 지도 서쪽 끝 -> 상자를 마커 오른쪽에 배치
+      anchor_val = (0, BOX_H // 2)
+    elif name == "화북":  # 지도 북동쪽 끝 -> 상자를 마커 왼쪽 아래에 배치
+      anchor_val = (BOX_W, 0)
+    elif name == "영천(종합)":  # 지도 남동쪽 끝 -> 상자를 마커 왼쪽 위에 배치
+      anchor_val = (BOX_W, BOX_H)
+    else:  # 청통 (중앙 부근) -> 상자를 마커 오른쪽 아래에 배치
       anchor_val = (0, 0)
 
     label_html = f"""
@@ -301,9 +309,8 @@ with map_col:
             font-weight: bold; 
             color: #1f2937; 
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            width: 170px;
+            width: {BOX_W}px;
             text-align: left;
-            {offset_style}
         ">
             <div style="color: #1d4ed8; border-bottom: 1px solid #e5e7eb; padding-bottom: 2px; margin-bottom: 4px;">📍 {name}</div>
             <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
@@ -321,7 +328,7 @@ with map_col:
     folium.Marker(
         location=[info["lat"], info["lon"]],
         icon=folium.DivIcon(
-            html=label_html, icon_size=(170, 100), icon_anchor=anchor_val
+            html=label_html, icon_size=(BOX_W, BOX_H), icon_anchor=anchor_val
         ),
     ).add_to(m)
 
