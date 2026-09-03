@@ -287,8 +287,8 @@ with map_col:
         location=[info["lat"], info["lon"]],
         icon=folium.DivIcon(
             html=label_html,
-            icon_size=(140, 90),
-            icon_anchor=(100, 35),
+            icon_size=(50, 50),
+            icon_anchor=(70, 45),
         ),
     ).add_to(m)
 
