@@ -98,15 +98,6 @@ def load_data():
   df["소재지상세"] = df.get("소재지상세", "-").fillna("-").astype(str)
   return df
 
-# 하단 정보 바 (통계)
-st.divider()
-c1, c2, c3 = st.columns(3)
-with c1:
-  st.info(f"📊 **주요 시대:** {filtered_df['시대그룹'].mode()[0]}")
-with c2:
-  st.info(f"📂 **종목 다양성:** {filtered_df['국가유산종목'].nunique()}종")
-with c3:
-  st.success(f"현재 위치: **{st.session_state.selected_heritage}**")
 
 df = load_data()
 
@@ -158,6 +149,17 @@ if filtered_df.empty:
   st.warning("조건에 맞는 유산이 없습니다.")
   st.stop()
 
+
+# 하단 정보 바 (통계)
+st.divider()
+c1, c2, c3 = st.columns(3)
+with c1:
+  st.info(f"📊 **주요 시대:** {filtered_df['시대그룹'].mode()[0]}")
+with c2:
+  st.info(f"📂 **종목 다양성:** {filtered_df['국가유산종목'].nunique()}종")
+with c3:
+  st.success(f"현재 위치: **{st.session_state.selected_heritage}**")
+    
 # =================================================
 # 세션 상태 관리 (중앙 좌표 및 선택 마커)
 # =================================================
