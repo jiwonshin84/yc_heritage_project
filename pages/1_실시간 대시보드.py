@@ -282,7 +282,7 @@ with map_col:
             border: 2px solid #1e3a8a; 
             border-radius: 8px; 
             padding: 6px 10px; 
-            font-size: 11px; 
+            font-size: 12px; 
             font-weight: bold; 
             color: #1f2937; 
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
@@ -298,7 +298,7 @@ with map_col:
                 <span>🌧 {w_data['rainfall']}mm</span>
                 <span>💨 {w_data['wind_speed']}m/s ({w_data['wind_dir']})</span>
             </div>
-            <div style="font-size: 9px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 2px;">⏱ {obs_time_fmt}</div>
+            <div style="font-size: 10px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 2px;">⏱ {obs_time_fmt}</div>
         </div>
         """
 
