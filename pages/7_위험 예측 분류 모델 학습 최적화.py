@@ -1,4 +1,5 @@
 import itertools
+import os
 import joblib
 import numpy as np
 import pandas as pd
@@ -212,7 +213,6 @@ def run_model_pipeline():
         X_encoded, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    # 3가지 모델 학습 및 비교
     models = {
         "Random Forest": RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1),
         "HistGradient Boosting": HistGradientBoostingClassifier(random_state=42),
@@ -220,7 +220,6 @@ def run_model_pipeline():
     }
 
     best_model = None
-    best_score = 0
 
     for name, model in models.items():
         if name == "Logistic Regression":
@@ -230,13 +229,13 @@ def run_model_pipeline():
         else:
             model.fit(X_train, y_train)
         
-        # 예측 페이지에서 공용으로 쓸 수 있도록 RandomForest를 best로 저장하거나 선택
         if name == "Random Forest":
             best_model = model
 
-    # 예측 페이지에서 필요한 모델 및 특성 목록 파일 저장
-    joblib.dump(best_model, "best_rf_model.pkl")
-    joblib.dump(X_encoded.columns.tolist(), "model_features.pkl")
+    # 루트 디렉토리에 모델 및 특성 목록 저장
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    joblib.dump(best_model, os.path.join(root_dir, "best_rf_model.pkl"))
+    joblib.dump(X_encoded.columns.tolist(), os.path.join(root_dir, "model_features.pkl"))
 
     return dataset, best_model, X_encoded
 
@@ -248,7 +247,7 @@ with st.spinner("🚀 분석 데이터를 로드하고 예측 모델을 준비 �
     dataset, rf_model, X_encoded = run_model_pipeline()
 
 # ------------------------------------------------------------
-# 5. 상단 배치 조건 필터 (제목 바로 아래)
+# 5. 상단 배치 조건 필터
 # ------------------------------------------------------------
 st.markdown("---")
 with st.container():
@@ -290,9 +289,9 @@ caution_count = (filtered_df["target"] == "주의").sum()
 safe_count = (filtered_df["target"] == "안전").sum()
 
 kpi1.metric("총 분석 데이터 수", f"{total_count:,} 건")
-kpi2.metric("🚨 위험 등급 비율", f"{(danger_count / total_count * 100):.1f}%", f"{danger_count:,} 건")
-kpi3.metric("⚠️ 주의 등급 비율", f"{(caution_count / total_count * 100):.1f}%", f"{caution_count:,} 건")
-kpi4.metric("✅ 안전 등급 비율", f"{(safe_count / total_count * 100):.1f}%", f"{safe_count:,} 건")
+kpi2.metric("🚨 위험 등급 비율", f"{(danger_count / total_count * 100):.1f}%" if total_count > 0 else "0.0%", f"{danger_count:,} 건")
+kpi3.metric("⚠️ 주의 등급 비율", f"{(caution_count / total_count * 100):.1f}%" if total_count > 0 else "0.0%", f"{caution_count:,} 건")
+kpi4.metric("✅ 안전 등급 비율", f"{(safe_count / total_count * 100):.1f}%" if total_count > 0 else "0.0%", f"{safe_count:,} 건")
 
 st.markdown("---")
 
@@ -356,7 +355,7 @@ with col2:
 st.markdown("---")
 
 # ------------------------------------------------------------
-# 8. 재질별 환경 가중치 시각화 (가로형 버튼 칩 선택 방식)
+# 8. 재질별 환경 가중치 시각화
 # ------------------------------------------------------------
 st.subheader("🏛️ 문화유산 재질별 환경 위험 가중치 구조 분석")
 
