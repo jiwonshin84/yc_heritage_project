@@ -239,7 +239,7 @@ st.info(
 )
 # 카드 스타일 정의
 title_style = (
-    "font-size:16px; font-weight:700; margin-bottom:6px; color:#1f2937;"
+    "font-size:17px; font-weight:700; margin-bottom:6px; color:#1f2937;"
 )
 label_style = "font-size:12px; color:#6b7280; margin-bottom:2px;"
 
@@ -320,17 +320,17 @@ with right_col:
     <hr style="margin: 4px 0;">
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:4px;">
         <div>
-            <div style="{label_style}">PM10 (미세먼지)</div><div style="font-size:14px; font-weight:700; color:#111827; margin-bottom:3px;">{air_data['pm10']} ㎍/㎥</div>
-            <div style="{label_style}">O₃ (오존)</div><div style="font-size:14px; font-weight:700; color:#111827; margin-bottom:3px;">{air_data['o3']} ppm</div>
-            <div style="{label_style}">CO (일산화탄소)</div><div style="font-size:14px; font-weight:700; color:#111827;">{air_data['co']} ppm</div>
+            <div style="{label_style}">PM10 (미세먼지)</div><div style="font-size:15px; font-weight:700; color:#111827; margin-bottom:3px;">{air_data['pm10']} ㎍/㎥</div>
+            <div style="{label_style}">O₃ (오존)</div><div style="font-size:15px; font-weight:700; color:#111827; margin-bottom:3px;">{air_data['o3']} ppm</div>
+            <div style="{label_style}">CO (일산화탄소)</div><div style="font-size:15px; font-weight:700; color:#111827;">{air_data['co']} ppm</div>
         </div>
         <div>
-            <div style="{label_style}">PM2.5 (초미세먼지)</div><div style="font-size:14px; font-weight:700; color:#111827; margin-bottom:3px;">{air_data['pm25']} ㎍/㎥</div>
-            <div style="{label_style}">NO₂ (이산화질소)</div><div style="font-size:14px; font-weight:700; color:#111827; margin-bottom:3px;">{air_data['no2']} ppm</div>
-            <div style="{label_style}">SO₂ (아황산가스)</div><div style="font-size:14px; font-weight:700; color:#111827;">{air_data['so2']} ppm</div>
+            <div style="{label_style}">PM2.5 (초미세먼지)</div><div style="font-size:15px; font-weight:700; color:#111827; margin-bottom:3px;">{air_data['pm25']} ㎍/㎥</div>
+            <div style="{label_style}">NO₂ (이산화질소)</div><div style="font-size:15px; font-weight:700; color:#111827; margin-bottom:3px;">{air_data['no2']} ppm</div>
+            <div style="{label_style}">SO₂ (아황산가스)</div><div style="font-size:15px; font-weight:700; color:#111827;">{air_data['so2']} ppm</div>
         </div>
     </div>
-    <div style="font-size:10px; color:#9ca3af; margin-top:6px;">⏱ 측정 시각 : {air_data['data_time']}</div>
+    <div style="font-size:12px; color:#9ca3af; margin-top:6px;">⏱ 측정 시각 : {air_data['data_time']}</div>
 </div>
     """,
       unsafe_allow_html=True,
