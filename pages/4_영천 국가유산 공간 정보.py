@@ -185,7 +185,7 @@ map_col, list_col = st.columns([3.3, 1.2])
 
 with map_col:
   # 실시간 대시보드와 동일한 기본 OpenStreetMap 지도 생성
-  m = folium.Map(location=[center_lat, center_lon], zoom_start=12)
+  m = folium.Map(location=[center_lat, center_lon], zoom_start=11)
 
   # 마커 클러스터 및 히트맵 추가
   marker_cluster = MarkerCluster(name="국가유산 마커").add_to(m)
