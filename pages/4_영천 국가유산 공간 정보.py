@@ -6,7 +6,7 @@ from folium.plugins import HeatMap, MarkerCluster
 from streamlit_folium import st_folium
 
 # =================================================
-# 페이지 설정
+# 페이지 설정 (layout="wide")
 # =================================================
 st.set_page_config(
     page_title="영천 국가유산 공간 정보",
@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# 상단 여백 및 커스텀 CSS (목록 가독성 및 버튼 스타일)
+# 상단 여백 및 커스텀 CSS
 st.markdown(
     """
     <style>
@@ -120,10 +120,13 @@ df = load_data()
 st.title("🛰️ 영천 국가유산 공간 정보")
 
 # =================================================
-# 사이드바 필터 및 검색
+# 🔍 검색 및 필터 영역 (지도 위로 이동)
 # =================================================
-st.sidebar.header("🔎 검색 및 필터")
-search_query = st.sidebar.text_input("유산 명칭 검색", placeholder="명칭을 입력하세요")
+st.markdown("### 🔎 검색 및 필터")
+f_col1, f_col2, f_col3, f_col4 = st.columns([2, 1.5, 1.5, 1])
+
+with f_col1:
+  search_query = st.text_input("유산 명칭 검색", placeholder="명칭을 입력하세요")
 
 era_order = [
     "청동기",
@@ -139,10 +142,13 @@ era_order = [
     "기타",
 ]
 existing_eras = [e for e in era_order if e in df["시대그룹"].unique()]
-selected_era = st.sidebar.selectbox("시대 선택", ["전체"] + existing_eras)
+
+with f_col2:
+  selected_era = st.selectbox("시대 선택", ["전체"] + existing_eras)
 
 type_options = ["전체"] + sorted(df["국가유산종목"].unique().tolist())
-selected_type = st.sidebar.selectbox("종목 선택", type_options)
+with f_col3:
+  selected_type = st.selectbox("종목 선택", type_options)
 
 # 데이터 필터링
 filtered_df = df.copy()
@@ -155,7 +161,11 @@ if selected_era != "전체":
 if selected_type != "전체":
   filtered_df = filtered_df[filtered_df["국가유산종목"] == selected_type]
 
-st.sidebar.metric("검색 결과", f"{len(filtered_df)} 건")
+with f_col4:
+  st.markdown("<br>", unsafe_allow_html=True)  # 줄맞춤용
+  st.metric("검색 결과", f"{len(filtered_df)} 건")
+
+st.divider()
 
 if filtered_df.empty:
   st.warning("조건에 맞는 유산이 없습니다.")
@@ -179,12 +189,12 @@ center_lat = selected_row["위도"]
 center_lon = selected_row["경도"]
 
 # =================================================
-# 레이아웃 구성
+# 레이아웃 구성 (지도 + 우측 목록)
 # =================================================
 map_col, list_col = st.columns([3.3, 1.2])
 
 with map_col:
-  # 실시간 대시보드와 동일한 기본 OpenStreetMap 지도 생성
+  # 기본 OpenStreetMap 지도 생성
   m = folium.Map(location=[center_lat, center_lon], zoom_start=15)
 
   # 마커 클러스터 및 히트맵 추가
