@@ -165,8 +165,6 @@ with f_col4:
   st.markdown("<br>", unsafe_allow_html=True)  # 줄맞춤용
   st.metric("검색 결과", f"{len(filtered_df)} 건")
 
-st.divider()
-
 if filtered_df.empty:
   st.warning("조건에 맞는 유산이 없습니다.")
   st.stop()
@@ -244,7 +242,7 @@ with map_col:
   folium.LayerControl(collapsed=False).add_to(m)
 
   # 지도 출력
-  st_folium(m, width="100%", height=400, key="gis_map")
+  st_folium(m, width="100%", height=500, key="gis_map")
 
 with list_col:
   st.subheader("📋 유산 목록")
