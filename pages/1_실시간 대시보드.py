@@ -283,9 +283,9 @@ with map_col:
     if name == "영천(종합)":  # 영천(종합) 상자는 기존 위치 유지
       offset_style = "margin-left: -85px; margin-top: -115px;"
       anchor_val = (85, 115)
-    elif name == "청통":  # 💡 청통 상자만 오른쪽으로 더 이동 (margin-left 값을 양수(더 오른쪽)로 크게 수정)
-      offset_style = "margin-left: 40px; margin-top: -110px;"
-      anchor_val = (-40, 110)
+    elif name == "청통":  # 💡 청통 상자를 오른쪽으로 더 확실하게 이동 (margin-left: 85px)
+      offset_style = "margin-left: 85px; margin-top: -110px;"
+      anchor_val = (-85, 110)
     elif name == "신령":
       offset_style = "margin-left: 10px; margin-top: 10px;"
       anchor_val = (0, 0)
