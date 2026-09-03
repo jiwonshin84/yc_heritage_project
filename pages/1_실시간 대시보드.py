@@ -236,7 +236,7 @@ value_style = (
 time_style = "font-size:12px; color:#9ca3af; margin-top:15px;"
 
 # --------------------------------------------
-# 1행 : [좌측] Folium 실시간 날씨 지도 & [우측] 대기오염 및 문화재 현황
+# 1행 : [좌측] 실시간 날씨 지도(정보 상시 노출) & [우측] 대기오염 및 문화재 현황
 # --------------------------------------------
 st.markdown(
     '<h3 style="font-size:22px; margin-bottom:15px;">🗺 영천시 지역별 실시간 기상'
@@ -247,35 +247,56 @@ map_col, right_col = st.columns([1.4, 1.0])
 
 with map_col:
   st.markdown(
-      "<p style='font-size:14px; color:#4b5563; margin-bottom:8px;'>📍 관측소별"
-      " 마커를 클릭하거나 호버하여 실시간 날씨(기온·습도)를 확인하세요.</p>",
+      "<p style='font-size:14px; color:#4b5563; margin-bottom:8px;'>📍 영천 지역"
+      " 관측소별 기온, 습도, 강수량, 풍속 실시간 상시 표시 지도</p>",
       unsafe_allow_html=True,
   )
 
   # 영천시 중심 좌표 기준으로 Folium 지도 생성
   m = folium.Map(location=[36.01, 128.89], zoom_start=10)
 
-  # 각 관측소별 마커 및 팝업/툴팁 설정
+  # 각 관측소별 상시 노출될 HTML 박스 아이콘 설정
   for name, info in STATION_MAP.items():
     w_data = weather_results[name]
 
-    # 지도 위에 상시 노출될 텍스트 툴팁 내용
-    tooltip_html = (
-        f"<b>📍 {name} 관측소</b><br>🌡 기온: {w_data['temp']}°C<br>💧 습도:"
-        f" {w_data['humidity']}%<br>🌧 강수: {w_data['rainfall']}mm<br>💨 풍속:"
-        f" {w_data['wind_speed']}m/s"
-    )
+    # 지도 위에 클릭 없이 바로 표출될 HTML 카드 스타일 디자인
+    label_html = f"""
+        <div style="
+            background-color: white; 
+            border: 2px solid #1e3a8a; 
+            border-radius: 8px; 
+            padding: 6px 10px; 
+            font-size: 12px; 
+            font-weight: bold; 
+            color: #1f2937; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            width: 140px;
+            text-align: left;
+            white-space: nowrap;
+        ">
+            <div style="color: #1d4ed8; border-bottom: 1px solid #e5e7eb; padding-bottom: 2px; margin-bottom: 3px;">📍 {name}</div>
+            <div>🌡 기온: {w_data['temp']}°C</div>
+            <div>💧 습도: {w_data['humidity']}%</div>
+            <div>🌧 강수: {w_data['rainfall']}mm</div>
+            <div>💨 풍속: {w_data['wind_speed']}m/s</div>
+        </div>
+        """
 
-    # 지도 마커 추가 (클릭 시 팝업, 마우스 올릴 시 툴팁 표시)
+    # Folium DivIcon을 사용해 지도 위에 고정 상시 텍스트 상자 표시
     folium.Marker(
         location=[info["lat"], info["lon"]],
-        popup=folium.Popup(tooltip_html, max_width=300),
-        tooltip=f"{name} (기온: {w_data['temp']}°C, 습도: {w_data['humidity']}%)",
-        icon=folium.Icon(color="blue", icon="cloud", prefix="fa"),
+        icon=folium.DivIcon(
+            html=label_html,
+            icon_size=(140, 90),
+            icon_anchor=(
+                70,
+                45,
+            ),  # 마커 중심을 기준으로 박스가 위치하도록 조정
+        ),
     ).add_to(m)
 
   # Streamlit 화면에 Folium 지도 출력
-  st_folium(m, width="100%", height=380, key="weather_map")
+  st_folium(m, width="100%", height=400, key="weather_map")
 
 with right_col:
   # 1. 대기현황 카드
