@@ -19,13 +19,17 @@ st.set_page_config(
     layout="wide",
 )
 
-# 💡 상단 기본 여백을 줄여주는 CSS 주입
+# 💡 상단 기본 여백을 완전히 없애서 최상단부터 채우도록 설정
 st.markdown(
     """
     <style>
         .block-container {
-            padding-top: 1.5rem !important;
+            padding-top: 0rem !important;
             padding-bottom: 2rem !important;
+            margin-top: 0rem !important;
+        }
+        header {
+            visibility: hidden;
         }
     </style>
 """,
@@ -219,13 +223,15 @@ except Exception:
   df = pd.DataFrame()
 
 st.markdown(
-    "<h1 style='font-size:30px; margin-top:0px;'>🏛 공공 환경 데이터 기반 영천"
-    " 지역 실시간 환경 현황</h1>",
+    "<h1 style='font-size:28px; margin-top:0px; margin-bottom:5px;'>🏛 공공 환경"
+    " 데이터 기반 영천 지역 실시간 환경 현황</h1>",
     unsafe_allow_html=True,
 )
 st.markdown(
-    "영천 지역 문화재 보존 관리를 위한 실시간 기상 관측 데이터(AWS) 및 대기 오염"
-    " 현황 모니터링 페이지입니다."
+    "<p style='margin-bottom:10px; color:#4b5563;'>영천 지역 문화재 보존"
+    " 관리를 위한 실시간 기상 관측 데이터(AWS) 및 대기 오염 현황 모니터링"
+    " 페이지입니다.</p>",
+    unsafe_allow_html=True,
 )
 
 # 자동 새로고침 상태 안내 표시
@@ -246,23 +252,23 @@ label_style = "font-size:13px; color:#6b7280; margin-bottom:2px;"
 # 1행 : [좌측] 실시간 날씨 지도 & [우측] 대기오염 및 문화재 현황
 # --------------------------------------------
 st.markdown(
-    '<h3 style="font-size:22px; margin-bottom:15px;">🗺 영천시 지역별 실시간 기상'
-    " 지도 및 대기/문화재 현황</h3>",
+    '<h3 style="font-size:20px; margin-bottom:10px;">🗺 영천시 지역별 실시간'
+    " 기상 지도 및 대기/문화재 현황</h3>",
     unsafe_allow_html=True,
 )
 map_col, right_col = st.columns([1.4, 1.0])
 
 with map_col:
   st.markdown(
-      "<p style='font-size:14px; color:#4b5563; margin-bottom:8px;'>📍 영천시"
+      "<p style='font-size:13px; color:#4b5563; margin-bottom:5px;'>📍 영천시"
       " 관측소별 상세 날씨 정보 지도</p>",
       unsafe_allow_html=True,
   )
 
-  # 영천시가 화면에 알맞게 들어오도록 줌 레벨 10 설정
+  # 영천시 중심 설정 및 줌 레벨 10
   m = folium.Map(location=[36.06, 128.85], zoom_start=10)
 
-  # 각 관측소별 상시 노출될 HTML 박스 아이콘 설정
+  # 💡 각 관측소별 상자가 겹치지 않도록 방향별로 확실히 분산 배치
   for name, info in STATION_MAP.items():
     w_data = weather_results[name]
 
@@ -274,18 +280,18 @@ with map_col:
           f" {obs_time_fmt[8:10]}:{obs_time_fmt[10:12]}"
       )
 
-    if name == "영천(종합)":
-      offset_style = "margin-left: -85px; margin-top: 10px;"
-      anchor_val = (85, 0)
-    elif name == "청통":
-      offset_style = "margin-left: -85px; margin-top: -110px;"
-      anchor_val = (85, 110)
-    elif name == "신령":
-      offset_style = "margin-left: 10px; margin-top: -50px;"
-      anchor_val = (0, 50)
-    else:  # 화북
-      offset_style = "margin-left: -85px; margin-top: 10px;"
-      anchor_val = (85, 0)
+    if name == "영천(종합)":  # 남쪽 중앙 위치 -> 상자를 위쪽으로 배치
+      offset_style = "margin-left: -85px; margin-top: -115px;"
+      anchor_val = (85, 115)
+    elif name == "청통":  # 서쪽 방향 위치 -> 상자를 우측 상단으로 배치
+      offset_style = "margin-left: 10px; margin-top: -110px;"
+      anchor_val = (0, 110)
+    elif name == "신령":  # 북서쪽 위치 -> 상자를 우측 아래로 배치
+      offset_style = "margin-left: 10px; margin-top: 10px;"
+      anchor_val = (0, 0)
+    else:  # 화북 (북동쪽 위치) -> 상자를 좌측 아래로 배치
+      offset_style = "margin-left: -180px; margin-top: 10px;"
+      anchor_val = (180, 0)
 
     label_html = f"""
         <div style="
@@ -327,22 +333,22 @@ with right_col:
   # 1. 대기현황 카드
   st.markdown(
       f"""
-<div style="background-color:#f8f9fa; padding:18px; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,0.04); margin-bottom:15px;">
+<div style="background-color:#f8f9fa; padding:16px; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,0.04); margin-bottom:12px;">
     <div style="{title_style}">🌫 대기오염 현황 (영천 측정소)</div>
-    <hr style="margin: 6px 0;">
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px;">
+    <hr style="margin: 4px 0;">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px;">
         <div>
-            <div style="{label_style}">PM10 (미세먼지)</div><div style="font-size:16px; font-weight:700; color:#111827; margin-bottom:6px;">{air_data['pm10']} ㎍/㎥</div>
-            <div style="{label_style}">O₃ (오존)</div><div style="font-size:16px; font-weight:700; color:#111827; margin-bottom:6px;">{air_data['o3']} ppm</div>
-            <div style="{label_style}">CO (일산화탄소)</div><div style="font-size:16px; font-weight:700; color:#111827;">{air_data['co']} ppm</div>
+            <div style="{label_style}">PM10 (미세먼지)</div><div style="font-size:15px; font-weight:700; color:#111827; margin-bottom:4px;">{air_data['pm10']} ㎍/㎥</div>
+            <div style="{label_style}">O₃ (오존)</div><div style="font-size:15px; font-weight:700; color:#111827; margin-bottom:4px;">{air_data['o3']} ppm</div>
+            <div style="{label_style}">CO (일산화탄소)</div><div style="font-size:15px; font-weight:700; color:#111827;">{air_data['co']} ppm</div>
         </div>
         <div>
-            <div style="{label_style}">PM2.5 (초미세먼지)</div><div style="font-size:16px; font-weight:700; color:#111827; margin-bottom:6px;">{air_data['pm25']} ㎍/㎥</div>
-            <div style="{label_style}">NO₂ (이산화질소)</div><div style="font-size:16px; font-weight:700; color:#111827; margin-bottom:6px;">{air_data['no2']} ppm</div>
-            <div style="{label_style}">SO₂ (아황산가스)</div><div style="font-size:16px; font-weight:700; color:#111827;">{air_data['so2']} ppm</div>
+            <div style="{label_style}">PM2.5 (초미세먼지)</div><div style="font-size:15px; font-weight:700; color:#111827; margin-bottom:4px;">{air_data['pm25']} ㎍/㎥</div>
+            <div style="{label_style}">NO₂ (이산화질소)</div><div style="font-size:15px; font-weight:700; color:#111827; margin-bottom:4px;">{air_data['no2']} ppm</div>
+            <div style="{label_style}">SO₂ (아황산가스)</div><div style="font-size:15px; font-weight:700; color:#111827;">{air_data['so2']} ppm</div>
         </div>
     </div>
-    <div style="font-size:11px; color:#9ca3af; margin-top:10px;">⏱ 측정 시각 : {air_data['data_time']}</div>
+    <div style="font-size:11px; color:#9ca3af; margin-top:8px;">⏱ 측정 시각 : {air_data['data_time']}</div>
 </div>
     """,
       unsafe_allow_html=True,
@@ -351,12 +357,12 @@ with right_col:
   # 2. 대기현황 밑에 위치한 문화재 수 카드
   st.markdown(
       f"""
-<div style="background-color:#f8f9fa; padding:18px; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,0.04);">
+<div style="background-color:#f8f9fa; padding:16px; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,0.04);">
     <div style="{title_style}">🏛 문화재 보존 관리 현황</div>
-    <hr style="margin: 6px 0;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+    <hr style="margin: 4px 0;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
         <div style="{label_style}">실시간 모니터링 대상 문화재 총 수</div>
-        <div style="font-size:24px; font-weight:700; color:#1f2937;">{len(df)}개소</div>
+        <div style="font-size:22px; font-weight:700; color:#1f2937;">{len(df)}개소</div>
     </div>
 </div>
     """,
