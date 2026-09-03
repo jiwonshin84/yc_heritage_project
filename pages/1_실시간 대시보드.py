@@ -247,25 +247,13 @@ title_style = (
 label_style = "font-size:12px; color:#6b7280; margin-bottom:2px;"
 
 # --------------------------------------------
-# 1행 : [좌측] 실시간 날씨 지도(확대) & [우측] 대기오염 및 문화재 현황(축소)
+# 1행 : [좌측] 실시간 날씨 지도 & [우측] 대기오염 및 문화재 현황
 # --------------------------------------------
-st.markdown(
-    '<h3 style="font-size:20px; margin-bottom:10px;">🗺 영천시 지역별 실시간'
-    " 기상 지도 및 대기/문화재 현황</h3>",
-    unsafe_allow_html=True,
-)
-
 map_col, right_col = st.columns([1.8, 1.0])
 
 with map_col:
-  st.markdown(
-      "<p style='font-size:13px; color:#4b5563; margin-bottom:5px;'>📍 영천시"
-      " 관측소별 상세 날씨 정보 지도</p>",
-      unsafe_allow_html=True,
-  )
-
-  # 영천시 전체 관측소(신녕, 청통, 화북, 영천종합)가 모두 들어오도록 중심 좌표/줌 레벨 조정
-  m = folium.Map(location=[36.02, 128.84], zoom_start=10.5)
+  # 지도 중심을 더 남쪽으로 이동 (위도 값을 낮춰서 지도를 아래로 내림)
+  m = folium.Map(location=[35.8500, 128.8400], zoom_start=10.5)
 
   # 상자 크기 (고정값으로 앵커 계산에 사용)
   BOX_W = 170
@@ -282,22 +270,13 @@ with map_col:
           f" {obs_time_fmt[8:10]}:{obs_time_fmt[10:12]}"
       )
 
-    # ------------------------------------------------------------
     # 위치 미세 조정
-    # - 신녕: 서쪽 끝 -> 마커 오른쪽에 배치
-    # - 화북: 북쪽 -> 기존보다 앵커 Y값을 낮춰서(내려서) 카드가 아래로 오게 조정
-    # - 영천(종합): 앵커 X값을 줄여서 카드가 오른쪽으로 더 밀려나도록 조정
-    # - 청통: 중앙 부근
-    # ------------------------------------------------------------
     if name == "신녕":
       anchor_val = (0, BOX_H // 2)
     elif name == "화북":
-      anchor_val = (BOX_W, -40)  # Y값을 낮추어(음수 방향/아래로) 화북 카드를 아래로 내림
+      anchor_val = (BOX_W, -40)
     elif name == "영천(종합)":
-      anchor_val = (
-          BOX_W - 140,
-          BOX_H,
-      )  # X값을 줄여서 영천(종합) 카드를 오른쪽으로 이동
+      anchor_val = (BOX_W - 140, BOX_H)
     else:  # 청통
       anchor_val = (0, 0)
 
