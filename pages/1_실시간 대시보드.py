@@ -288,7 +288,7 @@ with map_col:
         icon=folium.DivIcon(
             html=label_html,
             icon_size=(140, 90),
-            icon_anchor=(70, 45),
+            icon_anchor=(60, 35),
         ),
     ).add_to(m)
 
