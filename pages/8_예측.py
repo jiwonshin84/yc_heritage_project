@@ -5,32 +5,44 @@ import pandas as pd
 import requests
 import streamlit as st
 
-st.set_page_config(page_title="영천시 문화재 위험도 예측", layout="wide")
+st.set_page_config(page_title="영천시 전체 문화재 위험도 예측", layout="wide")
 
-st.title("🏛️ 영천시 주요 문화재 실시간 위험도 예측 시스템")
-st.markdown("##### 📌 가장 최근에 기상청 및 대기오염 데이터가 업데이트된 날짜를 기준으로 영천시 주요 문화재의 위험도를 예측합니다.")
+st.title("🏛️ 영천시 전체 문화재 실시간 위험도 예측 시스템")
+st.markdown("##### 📌 `data/processed/yc_heritage_feature.csv`의 105개 문화재 목록과 최신 기상청 데이터를 연동하여 위험도를 일괄 예측합니다.")
 
 
 @st.cache_resource
-def load_model():
+def load_model_and_heritage():
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     model_path = os.path.join(root_dir, "best_rf_model.pkl")
     features_path = os.path.join(root_dir, "model_features.pkl")
+    heritage_csv_path = os.path.join(root_dir, "data", "processed", "yc_heritage_feature.csv")
 
     try:
         model = joblib.load(model_path)
         features = joblib.load(features_path)
-        return model, features
     except FileNotFoundError:
-        return None, None
+        return None, None, None
+
+    try:
+        # 105개 문화재 정보 파일 로드
+        heritage_df = pd.read_csv(heritage_csv_path)
+    except Exception as e:
+        heritage_df = None
+        st.error(f"문화재 기본 정보 파일(`yc_heritage_feature.csv`) 로드 실패: {e}")
+
+    return model, features, heritage_df
 
 
-model, feature_cols = load_model()
+model, feature_cols, heritage_df = load_model_and_heritage()
 
 if model is None:
     st.warning(
         "⚠️ 학습된 모델이 존재하지 않습니다. 먼저 사이드바에서 **[7_위험 예측 분류 모델 학습 최적화]** 페이지로 이동해 모델 학습을 완료해 주세요!"
     )
+    st.stop()
+
+if heritage_df is None:
     st.stop()
 
 ASOS_SERVICE_KEY = (
@@ -40,18 +52,6 @@ ASOS_URL = (
     "http://apis.data.go.kr/1360000/AsosDalyInfoService/getWthrDataList"
 )
 STN_ID = "281"  # 영천 관측소
-
-# 영천시 주요 문화재 명단 및 고유 재질/노출 환경 매핑
-YEONGCHEON_HERITAGES = [
-    {"문화재명": "영천 은해사 대웅전", "종류": "보물", "material": "목조", "exposure": "실외"},
-    {"문화재명": "영천 거동사 대웅전", "종류": "국보", "material": "목조", "exposure": "실외"},
-    {"문화재명": "영천 백의리 삼층석탑", "종류": "보물", "material": "석조", "exposure": "실외"},
-    {"문화재명": "영천 자천리 목조한옥", "종류": "국보", "material": "목조", "exposure": "실외"},
-    {"문화재명": "영천 임고서원 표충사", "종류": "지정문화재", "material": "목조", "exposure": "반실외"},
-    {"문화재명": "영천 오계동 금속유물 소장품", "종류": "지정문화재", "material": "금속", "exposure": "실내"},
-    {"문화재명": "영천 최남주 고택 회화작품", "종류": "지정문화재", "material": "회화", "exposure": "실내"},
-    {"문화재명": "영천 자양면 사찰 종각", "종류": "일반문화재", "material": "금속", "exposure": "실외"},
-]
 
 
 def fetch_latest_prediction_data():
@@ -167,21 +167,24 @@ def fetch_latest_prediction_data():
 
 
 # 실행 버튼
-if st.button("🚀 영천시 문화재 최신 위험도 분석 실행"):
-    with st.spinner("최근 기상 및 대기오염 데이터를 동기화하여 영천시 문화재별 위험도를 예측 중입니다..."):
+if st.button("🚀 영천시 105개 전체 문화재 최신 위험도 분석 실행"):
+    with st.spinner("최근 기상 및 대기오염 데이터를 동기화하여 105개 전체 문화재의 위험도를 예측 중입니다..."):
         df_recent = fetch_latest_prediction_data()
 
         if df_recent is not None and not df_recent.empty:
             latest_row = df_recent.iloc[-1].copy()
             target_date = latest_row["date"].strftime("%Y-%m-%d")
 
-            st.success(f"✅ 최신 데이터 기준일: **{target_date}** (영천 관측소 및 대기 데이터 연동 완료)")
+            st.success(f"✅ 최신 데이터 기준일: **{target_date}** (영천 관측소 연동 완료, 총 {len(heritage_df)}개 문화재 대상)")
 
             results = []
-            for heritage in YEONGCHEON_HERITAGES:
+            # CSV 파일의 105개 행을 반복문으로 돌며 예측
+            for _, heritage in heritage_df.iterrows():
                 row_data = latest_row.to_dict()
-                row_data["material"] = heritage["material"]
-                row_data["exposure"] = heritage["exposure"]
+                
+                # CSV 파일의 컬럼명(재질, 노출형태) 매핑
+                row_data["material"] = heritage.get("재질", "기타")
+                row_data["exposure"] = heritage.get("노출형태", "실외")
 
                 single_df = pd.DataFrame([row_data])
                 X_input = single_df[[
@@ -202,10 +205,11 @@ if st.button("🚀 영천시 문화재 최신 위험도 분석 실행"):
                 pred = model.predict(X_input_encoded)[0]
 
                 results.append({
-                    "문화재명": heritage["문화재명"],
-                    "구분": heritage["종류"],
-                    "재질": heritage["material"],
-                    "노출환경": heritage["exposure"],
+                    "국가유산연계번호": heritage.get("국가유산연계번호", ""),
+                    "문화재명": heritage.get("문화재명(국문)", ""),
+                    "구분": heritage.get("국가유산종목", ""),
+                    "재질": row_data["material"],
+                    "노출환경": row_data["exposure"],
                     "예측 위험등급": pred,
                     "평균기온(℃)": latest_row["temp_avg"],
                     "습도(%)": latest_row["humidity"],
@@ -223,13 +227,13 @@ if st.button("🚀 영천시 문화재 최신 위험도 분석 실행"):
                     return "background-color: #ccffcc; color: #006600; font-weight: bold;"
 
             st.markdown("---")
-            st.subheader(f"📊 영천시 주요 문화재별 최신 위험 예측 현황 ({target_date})")
+            st.subheader(f"📊 영천시 105개 전체 문화재별 최신 위험 예측 현황 ({target_date})")
             
-            # Pandas 스타일 적용 (.applymap 대신 최신 .map 사용)
+            # 스타일 적용 출력
             st.dataframe(
                 result_df.style.map(highlight_risk, subset=["예측 위험등급"]),
                 use_container_width=True,
-                height=350
+                height=450
             )
 
             st.markdown("---")
