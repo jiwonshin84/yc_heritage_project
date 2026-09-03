@@ -14,6 +14,15 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+st.markdown("""
+<h1 style="font-size:34px; margin-bottom:5px;">
+영천 국가유산 공간 정보
+</h1>
+<div style="font-size:17px; color:#6b7280; margin-bottom:20px;">
+영천 국가유산을 검색해보세요
+</div>
+""", unsafe_allow_html=True)
+
 # 상단 여백 및 커스텀 CSS
 st.markdown(
     """
