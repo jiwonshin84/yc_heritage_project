@@ -9,7 +9,7 @@ from streamlit_folium import st_folium
 # 페이지 설정 (layout="wide")
 # =================================================
 st.set_page_config(
-    page_title="🏛️영천 국가유산 공간 정보",
+    page_title="영천 국가유산 공간 정보",
     layout="wide",
     initial_sidebar_state="expanded",
 )
