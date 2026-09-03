@@ -212,8 +212,13 @@ def run_model_pipeline():
         X_encoded, y, test_size=0.2, random_state=42, stratify=y
     )
 
+    # 모델 학습 및 저장
     rf_model = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
     rf_model.fit(X_train, y_train)
+
+    # 💾 학습된 모델과 특성(컬럼) 목록 파일 저장
+    joblib.dump(rf_model, "best_rf_model.pkl")
+    joblib.dump(X_encoded.columns.tolist(), "model_features.pkl")
 
     return dataset, rf_model, X_encoded
 
