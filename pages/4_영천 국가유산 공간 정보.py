@@ -1,12 +1,8 @@
 import re
-from datetime import datetime
-import urllib.parse
-from zoneinfo import ZoneInfo
-
 import folium
 import pandas as pd
-import requests
 import streamlit as st
+from folium.plugins import HeatMap, MarkerCluster
 from streamlit_folium import st_folium
 
 # =================================================
@@ -18,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# 상단 기본 여백 및 사이드바 유지 스타일 설정
+# 상단 여백 및 커스텀 CSS (목록 가독성 및 버튼 스타일)
 st.markdown(
     """
     <style>
@@ -32,100 +28,15 @@ st.markdown(
             padding: 10px;
             margin-bottom: -5px;
         }
+        /* 선택된 버튼 스타일 강조 */
+        div[data-testid="column"]:nth-child(2) button[kind="secondary"]:focus {
+            border-color: #ff4b4b !important;
+            color: #ff4b4b !important;
+        }
     </style>
     """,
     unsafe_allow_html=True,
 )
-
-# =================================================
-# API KEY 및 관측소 설정 (실시간 대시보드 연동)
-# =================================================
-KMA_AUTH_KEY = "XDdcOK8kT5C3XDivJN-Qtg"
-AWS_MIN_URL = "https://apihub.kma.go.kr/api/typ01/cgi-bin/url/nph-aws2_min"
-
-STATION_MAP = {
-    "신녕": {"id": "853", "lat": 36.0150, "lon": 128.6100},
-    "청통": {"id": "854", "lat": 36.0250, "lon": 128.7800},
-    "화북": {"id": "855", "lat": 36.1700, "lon": 128.9300},
-    "영천(종합)": {"id": "281", "lat": 35.9650, "lon": 128.9400},
-}
-
-
-# =================================================
-# 헬퍼 함수 정의
-# =================================================
-def degree_to_direction(deg):
-  try:
-    deg = float(deg)
-    if deg < 0 or deg > 360:
-      return "-"
-    dirs = [
-        "북",
-        "북북동",
-        "북동",
-        "동북동",
-        "동",
-        "남동",
-        "남",
-        "남남서",
-        "남서",
-        "서남서",
-        "서",
-        "서북서",
-        "북서",
-        "북북서",
-        "북",
-    ]
-    idx = int((deg + 11.25) / 22.5) % 16
-    return dirs[idx]
-  except (ValueError, TypeError):
-    return "-"
-
-
-def safe_val(val, default="-"):
-  if val is None or val == "" or str(val).startswith("-99") or str(val) == "-":
-    return default
-  return str(val)
-
-
-@st.cache_data(ttl=60)
-def get_aws_weather_data(stn_id):
-  aws_data = {
-      "temp": "-",
-      "humidity": "-",
-      "rainfall": "-",
-      "wind_speed": "-",
-      "wind_dir": "-",
-      "obs_time": "-",
-  }
-  try:
-    params = {"authKey": KMA_AUTH_KEY, "stn": str(stn_id), "disp": "1", "help": "0"}
-    response = requests.get(AWS_MIN_URL, params=params, timeout=10)
-    if response.status_code == 200:
-      lines = [
-          line.strip()
-          for line in response.text.split("\n")
-          if line.strip() and not line.startswith("#")
-      ]
-      if lines:
-        data_line = lines[-1]
-        parts = [p.strip() for p in data_line.split(",")]
-        if len(parts) >= 15:
-          aws_data["obs_time"] = parts[0]
-          aws_data["wind_dir"] = degree_to_direction(parts[2])
-          aws_data["wind_speed"] = safe_val(parts[3])
-          aws_data["temp"] = safe_val(parts[8])
-          aws_data["rainfall"] = safe_val(parts[10], "0.0")
-          aws_data["humidity"] = safe_val(parts[14])
-  except Exception:
-    pass
-  return aws_data
-
-
-# 날씨 데이터 일괄 수집
-weather_results = {}
-for name, info in STATION_MAP.items():
-  weather_results[name] = get_aws_weather_data(info["id"])
 
 
 # =================================================
@@ -206,7 +117,7 @@ df = load_data()
 # =================================================
 # 제목
 # =================================================
-st.title("🛰️ 영천 국가유산 공간 정보 및 실시간 환경 현황")
+st.title("🛰️ 영천 국가유산 공간 정보")
 
 # =================================================
 # 사이드바 필터 및 검색
@@ -273,14 +184,19 @@ center_lon = selected_row["경도"]
 map_col, list_col = st.columns([3.3, 1.2])
 
 with map_col:
-  # 기본 OpenStreetMap 방식 지도 생성 (화남면 중심 좌표 적용 가능)
-  m = folium.Map(location=[36.0650, 128.8740], zoom_start=10.5)
+  # 실시간 대시보드와 동일한 기본 OpenStreetMap 지도 생성
+  m = folium.Map(location=[center_lat, center_lon], zoom_start=15)
 
-  # 1. 문화유산 마커 추가
+  # 마커 클러스터 및 히트맵 추가
+  marker_cluster = MarkerCluster(name="국가유산 마커").add_to(m)
+  heat_data = filtered_df[["위도", "경도"]].values.tolist()
+  HeatMap(heat_data, radius=18, blur=13, name="밀집도").add_to(m)
+
   for _, row in filtered_df.iterrows():
     name = row["문화재명(국문)"]
     is_selected = (name == st.session_state.selected_heritage)
 
+    # 팝업 HTML
     img_url = str(row.get("이미지URL", "")).replace("http://", "https://")
     img_tag = (
         f'<img src="{img_url}" style="width:100%; height:180px;'
@@ -292,83 +208,30 @@ with map_col:
     )
 
     popup_content = f"""
-        <div style="width:260px; font-family:sans-serif;">
-            <h4 style="margin:0 0 10px 0;">{name}</h4>
-            {img_tag}
-            <div style="font-size:12px; margin-top:10px;">
-                <b>시대:</b> {row['시대그룹']} | <b>종목:</b> {row['국가유산종목']}<br>
-                <b>주소:</b> {row['소재지상세']}
+            <div style="width:260px; font-family:sans-serif;">
+                <h4 style="margin:0 0 10px 0;">{name}</h4>
+                {img_tag}
+                <div style="font-size:12px; margin-top:10px;">
+                    <b>시대:</b> {row['시대그룹']} | <b>종목:</b> {row['국가유산종목']}<br>
+                    <b>주소:</b> {row['소재지상세']}
+                </div>
             </div>
-        </div>
         """
 
+    # 선택된 유산은 붉은색 마커, 나머지는 파란색
     folium.Marker(
         location=[row["위도"], row["경도"]],
         popup=folium.Popup(popup_content, max_width=300),
         tooltip=name,
         icon=folium.Icon(
             color="red" if is_selected else "blue",
-            icon="university" if is_selected else "info-sign",
-            prefix="fa" if is_selected else "glyphicon",
+            icon="university",
+            prefix="fa",
         ),
-    ).add_to(m)
+    ).add_to(marker_cluster)
 
-  # 2. 실시간 대시보드 스타일의 날씨/환경 관측소 카드 오버레이 추가
-  BOX_W = 170
-  BOX_H = 100
-
-  for name, info in STATION_MAP.items():
-    w_data = weather_results[name]
-    obs_time_fmt = w_data["obs_time"]
-    if len(obs_time_fmt) == 12:
-      obs_time_fmt = (
-          f"{obs_time_fmt[:4]}-{obs_time_fmt[4:6]}-{obs_time_fmt[6:8]}"
-          f" {obs_time_fmt[8:10]}:{obs_time_fmt[10:12]}"
-      )
-
-    # 대시보드와 동일한 위치 미세 조정 값 적용
-    if name == "신녕":
-      anchor_val = (-40, BOX_H + 40)
-    elif name == "화북":
-      anchor_val = (BOX_W - 210, -40)
-    elif name == "영천(종합)":
-      anchor_val = (BOX_W - 140, BOX_H)
-    else:  # 청통
-      anchor_val = (120, 10)
-
-    label_html = f"""
-        <div style="
-            background-color: white; 
-            border: 2px solid #1e3a8a; 
-            border-radius: 8px; -webkit-border-radius: 8px;
-            padding: 6px 10px; 
-            width: {BOX_W}px;
-            text-align: left;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        ">
-            <div style="color: #1d4ed8; font-size: 13px; font-weight: 800; border-bottom: 1px solid #e5e7eb; padding-bottom: 2px; margin-bottom: 4px;">
-                📍 {name} (관측소)
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 2px; font-size: 11px; font-weight: 600; color: #374151;">
-                <span>🌡 {w_data['temp']}°C</span>
-                <span>💧 {w_data['humidity']}%</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 11px; font-weight: 600; color: #374151;">
-                <span>🌧 {w_data['rainfall']}mm</span>
-                <span>💨 {w_data['wind_speed']}m/s ({w_data['wind_dir']})</span>
-            </div>
-            <div style="font-size: 9px; font-weight: 500; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 2px;">
-                ⏱ {obs_time_fmt}
-            </div>
-        </div>
-        """
-
-    folium.Marker(
-        location=[info["lat"], info["lon"]],
-        icon=folium.DivIcon(
-            html=label_html, icon_size=(BOX_W, BOX_H), icon_anchor=anchor_val
-        ),
-    ).add_to(m)
+  # 레이어 컨트롤러
+  folium.LayerControl(collapsed=False).add_to(m)
 
   # 지도 출력
   st_folium(m, width="100%", height=720, key="gis_map")
@@ -384,9 +247,11 @@ with list_col:
       addr = row["소재지상세"]
       is_selected = (name == st.session_state.selected_heritage)
 
+      # 버튼 표시 (선택된 항목은 이모지 변경)
       btn_label = f"🚩 {name}" if is_selected else f"🏛️ {name}"
 
       if st.button(btn_label, key=f"list_btn_{idx}", use_container_width=True):
+        # 세션 상태 업데이트 후 새로고침
         st.session_state.selected_heritage = name
         st.rerun()
 
