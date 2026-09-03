@@ -238,6 +238,8 @@ st.info(
     " 수집 전송 지연에 따라 실측 시각과 차이가 발생할 수 있습니다."
 )
 
+st.divider()
+
 # 카드 스타일 정의
 title_style = (
     "font-size:16px; font-weight:700; margin-bottom:6px; color:#1f2937;"
@@ -248,12 +250,18 @@ label_style = "font-size:12px; color:#6b7280; margin-bottom:2px;"
 # 1행 : [좌측] 실시간 날씨 지도(확대) & [우측] 대기오염 및 문화재 현황(축소)
 # --------------------------------------------
 st.markdown(
+    '<h3 style="font-size:20px; margin-bottom:10px;">🗺 영천시 지역별 실시간'
+    " 기상 지도 및 대기/문화재 현황</h3>",
+    unsafe_allow_html=True,
 )
 
 map_col, right_col = st.columns([1.8, 1.0])
 
 with map_col:
   st.markdown(
+      "<p style='font-size:13px; color:#4b5563; margin-bottom:5px;'>📍 영천시"
+      " 관측소별 상세 날씨 정보 지도</p>",
+      unsafe_allow_html=True,
   )
 
   # 영천시 전체 관측소(신녕, 청통, 화북, 영천종합)가 모두 들어오도록 중심 좌표/줌 레벨 조정
