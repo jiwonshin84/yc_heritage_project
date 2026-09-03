@@ -18,7 +18,18 @@ st.set_page_config(
     page_icon="🏠",
     layout="wide",
 )
-
+# 상단 기본 여백을 줄이되, 사이드바(메뉴)는 유지하도록 설정
+st.markdown(
+    """
+    <style>
+        .block-container {
+            padding-top: 1rem !important;
+            padding-bottom: 2rem !important;
+        }
+    </style>
+""",
+    unsafe_allow_html=True,
+)
 
 # 60초(60,000밀리초)마다 자동으로 페이지를 새로고침 (최대 1,000회)
 count = st_autorefresh(interval=60000, limit=1000, key="weather_auto_refresh")
