@@ -54,16 +54,16 @@ AWS_MIN_URL = "https://apihub.kma.go.kr/api/typ01/cgi-bin/url/nph-aws2_min"
 # 한국환경공단 시도별 실시간 대기오염 측정 정보 API URL
 AIR_URL = "http://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty"
 
-# 💡 영천 주요 관측소의 실제 지도 위치 좌표로 완벽 교체
+# 💡 요청하신 배치 방향에 맞춘 관측소 좌표 설정
+# - 신령: 왼쪽 (서쪽)
+# - 청통(화산 위치): 신령 오른쪽
+# - 영천(종합): 오른쪽 (동쪽/중심)
+# - 화북: 위쪽 (북쪽)
 STATION_MAP = {
-    "영천(종합)": {
-        "id": "281",
-        "lat": 35.9725,
-        "lon": 128.9390,
-    },  # 영천시 중심(완산동 부근)
-    "신령": {"id": "853", "lat": 36.0350, "lon": 128.6180},  # 신녕면 실제 위치
-    "청통": {"id": "854", "lat": 35.9620, "lon": 128.7900},  # 청통면 실제 위치
-    "화북": {"id": "855", "lat": 36.1950, "lon": 128.9550},  # 화북면 실제 위치
+    "신령": {"id": "853", "lat": 36.0350, "lon": 128.6180},
+    "청통": {"id": "854", "lat": 35.9620, "lon": 128.7900},
+    "영천(종합)": {"id": "281", "lat": 35.9725, "lon": 128.9390},
+    "화북": {"id": "855", "lat": 36.1950, "lon": 128.9550},
 }
 
 
@@ -272,7 +272,7 @@ with map_col:
   # 영천시 중심 설정 및 줌 레벨 10
   m = folium.Map(location=[36.06, 128.85], zoom_start=10)
 
-  # 각 관측소별 상시 노출될 HTML 박스 아이콘 설정 (실제 위치 기준)
+  # 💡 각 지역별 상자가 절대 겹치지 않도록 오프셋 및 앵커 개별 조정
   for name, info in STATION_MAP.items():
     w_data = weather_results[name]
 
@@ -284,19 +284,18 @@ with map_col:
           f" {obs_time_fmt[8:10]}:{obs_time_fmt[10:12]}"
       )
 
-    # 💡 실제 위치 기준이므로 마커 위치와 겹치지 않도록 깔끔하게 오프셋 정렬
-    if name == "영천(종합)":
-      offset_style = "margin-left: -85px; margin-top: -115px;"
-      anchor_val = (85, 115)
-    elif name == "청통":
-      offset_style = "margin-left: -85px; margin-top: -115px;"
-      anchor_val = (85, 115)
-    elif name == "신령":
-      offset_style = "margin-left: -85px; margin-top: -115px;"
-      anchor_val = (85, 115)
-    else:  # 화북
-      offset_style = "margin-left: -85px; margin-top: 10px;"
-      anchor_val = (85, 0)
+    if name == "신령":  # 왼쪽
+      offset_style = "margin-left: -170px; margin-top: -50px;"
+      anchor_val = (170, 50)
+    elif name == "청통":  # 신령 오른쪽
+      offset_style = "margin-left: 10px; margin-top: -110px;"
+      anchor_val = (0, 110)
+    elif name == "영천(종합)":  # 오른쪽
+      offset_style = "margin-left: 10px; margin-top: 10px;"
+      anchor_val = (0, 0)
+    else:  # 화북 (위쪽)
+      offset_style = "margin-left: -85px; margin-top: -130px;"
+      anchor_val = (85, 130)
 
     label_html = f"""
         <div style="
