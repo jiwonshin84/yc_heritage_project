@@ -1,5 +1,20 @@
 import streamlit as st
-
+# 상단 기본 여백을 완전히 없애서 최상단부터 채우도록 설정
+st.markdown(
+    """
+    <style>
+        .block-container {
+            padding-top: 0rem !important;
+            padding-bottom: 2rem !important;
+            margin-top: 0rem !important;
+        }
+        header {
+            visibility: hidden;
+        }
+    </style>
+""",
+    unsafe_allow_html=True,
+)
 st.title("📖 프로젝트 개요")
 st.divider()
 # ==========================================================
