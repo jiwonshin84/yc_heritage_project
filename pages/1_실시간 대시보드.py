@@ -234,12 +234,9 @@ st.markdown(
 
 # 자동 새로고침 상태 안내 표시
 st.info(
-    f"🔄 **실시간 자동 동기화 중** (마지막 화면 동기화: {current_kst}) — 관측소"
-    " 수집 전송 지연에 따라 실측 시각과 차이가 발생할 수 있습니다."
+    f"🔄 **실시간 자동 동기화 중** (마지막 화면 동기화: {current_kst}) "
+    "<br>— 관측소 수집 전송 지연에 따라 실측 시각과 차이가 발생할 수 있습니다."
 )
-
-st.divider()
-
 # 카드 스타일 정의
 title_style = (
     "font-size:16px; font-weight:700; margin-bottom:6px; color:#1f2937;"
