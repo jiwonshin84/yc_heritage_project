@@ -248,7 +248,7 @@ with list_col:
   st.subheader("📋 유산 목록")
   st.caption("클릭 시 해당 위치로 지도가 이동합니다.")
 
-  list_container = st.container(height=500)
+  list_container = st.container(height=400)
   with list_container:
     for idx, row in filtered_df.iterrows():
       name = row["문화재명(국문)"]
