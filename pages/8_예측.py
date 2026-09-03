@@ -172,13 +172,11 @@ if st.button("🚀 영천시 문화재 최신 위험도 분석 실행"):
         df_recent = fetch_latest_prediction_data()
 
         if df_recent is not None and not df_recent.empty:
-            # 가장 마지막에 마감된 최신 날짜의 데이터 한 행 추출
             latest_row = df_recent.iloc[-1].copy()
             target_date = latest_row["date"].strftime("%Y-%m-%d")
 
             st.success(f"✅ 최신 데이터 기준일: **{target_date}** (영천 관측소 및 대기 데이터 연동 완료)")
 
-            # 영천시 문화재별로 최신 환경 데이터를 대입하여 예측 수행
             results = []
             for heritage in YEONGCHEON_HERITAGES:
                 row_data = latest_row.to_dict()
@@ -216,7 +214,6 @@ if st.button("🚀 영천시 문화재 최신 위험도 분석 실행"):
 
             result_df = pd.DataFrame(results)
 
-            # 등급별 색상 강조를 위한 스타일 함수
             def highlight_risk(val):
                 if val == "위험":
                     return "background-color: #ffcccc; color: #990000; font-weight: bold;"
@@ -228,14 +225,13 @@ if st.button("🚀 영천시 문화재 최신 위험도 분석 실행"):
             st.markdown("---")
             st.subheader(f"📊 영천시 주요 문화재별 최신 위험 예측 현황 ({target_date})")
             
-            # 스타일을 적용한 데이터프레임 출력
+            # Pandas 스타일 적용 (.applymap 대신 최신 .map 사용)
             st.dataframe(
-                result_df.style.applymap(highlight_risk, subset=["예측 위험등급"]),
+                result_df.style.map(highlight_risk, subset=["예측 위험등급"]),
                 use_container_width=True,
                 height=350
             )
 
-            # 요약 메트릭
             st.markdown("---")
             m1, m2, m3 = st.columns(3)
             danger_count = (result_df["예측 위험등급"] == "위험").sum()
@@ -246,12 +242,10 @@ if st.button("🚀 영천시 문화재 최신 위험도 분석 실행"):
             m2.metric("⚠️ 주의 단계 문화재 수", f"{caution_count} 곳")
             m3.metric("✅ 안전 단계 문화재 수", f"{safe_count} 곳")
 
-            # 최근 7일간의 날짜별 트렌드도 함께 제공
             st.markdown("---")
             st.subheader("📈 최근 7일간 전체 영천시 기상 기반 위험도 추이")
             
             df_7days = df_recent.tail(7).copy()
-            # 예시로 대표 재질(목조/실외) 기준 7일 예측
             trend_results = []
             for _, r in df_7days.iterrows():
                 r_dict = r.to_dict()
