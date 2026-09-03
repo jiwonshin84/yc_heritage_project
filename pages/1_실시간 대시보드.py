@@ -351,5 +351,4 @@ with right_col:
       unsafe_allow_html=True,
   )
 
-st.divider()
 st.caption("선화여고 - 영천 헤리티지 AI 탐구단")
