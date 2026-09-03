@@ -5,9 +5,10 @@ import pandas as pd
 import requests
 import streamlit as st
 
-st.set_page_config(page_title="최근 7일 위험도 예측", layout="wide")
+st.set_page_config(page_title="영천시 문화재 위험도 예측", layout="wide")
 
-st.title("🔮 최근 7일 데이터 기반 위험도 예측")
+st.title("🏛️ 영천시 주요 문화재 실시간 위험도 예측 시스템")
+st.markdown("##### 📌 가장 최근에 기상청 및 대기오염 데이터가 업데이트된 날짜를 기준으로 영천시 주요 문화재의 위험도를 예측합니다.")
 
 
 @st.cache_resource
@@ -40,9 +41,21 @@ ASOS_URL = (
 )
 STN_ID = "281"  # 영천 관측소
 
+# 영천시 주요 문화재 명단 및 고유 재질/노출 환경 매핑
+YEONGCHEON_HERITAGES = [
+    {"문화재명": "영천 은해사 대웅전", "종류": "보물", "material": "목조", "exposure": "실외"},
+    {"문화재명": "영천 거동사 대웅전", "종류": "국보", "material": "목조", "exposure": "실외"},
+    {"문화재명": "영천 백의리 삼층석탑", "종류": "보물", "material": "석조", "exposure": "실외"},
+    {"문화재명": "영천 자천리 목조한옥", "종류": "국보", "material": "목조", "exposure": "실외"},
+    {"문화재명": "영천 임고서원 표충사", "종류": "지정문화재", "material": "목조", "exposure": "반실외"},
+    {"문화재명": "영천 오계동 금속유물 소장품", "종류": "지정문화재", "material": "금속", "exposure": "실내"},
+    {"문화재명": "영천 최남주 고택 회화작품", "종류": "지정문화재", "material": "회화", "exposure": "실내"},
+    {"문화재명": "영천 자양면 사찰 종각", "종류": "일반문화재", "material": "금속", "exposure": "실외"},
+]
 
-def fetch_recent_7days_data():
-    # 데이터 집계 지연을 고려하여 오늘이 아닌 2일 전부터 과거 12일간의 데이터를 조회합니다.
+
+def fetch_latest_prediction_data():
+    # 데이터 집계 지연을 고려하여 2일 전부터 최근 12일간의 데이터를 조회
     today = datetime.date.today() - datetime.timedelta(days=2)
     start_date = today - datetime.timedelta(days=12)
     start_str = start_date.strftime("%Y%m%d")
@@ -63,20 +76,17 @@ def fetch_recent_7days_data():
         response = requests.get(ASOS_URL, params=params, timeout=30)
         res_json = response.json()
 
-        # 안전한 키 검사 (body가 없을 때의 에러 방지)
         if (
             "response" not in res_json
             or "body" not in res_json["response"]
             or "items" not in res_json["response"]["body"]
         ):
-            st.error(f"기상청 API 응답 오류: {res_json}")
+            st.error("기상청 API 응답 구조를 불러오지 못했습니다.")
             return None
 
         items_data = res_json["response"]["body"]["items"]
-        if not items_data or "" == items_data or "item" not in items_data:
-            st.error(
-                "조회된 기상 데이터 항목이 없습니다. 날짜 범위를 확인해주세요."
-            )
+        if not items_data or "item" not in items_data:
+            st.error("조회된 기상 데이터 항목이 없습니다.")
             return None
 
         items = items_data["item"]
@@ -152,86 +162,110 @@ def fetch_recent_7days_data():
 
         return df
     except Exception as e:
-        st.error(f"최근 데이터 수집 실패: {e}")
+        st.error(f"데이터 수집 중 오류 발생: {e}")
         return None
 
 
-col1, col2 = st.columns(2)
-with col1:
-    selected_material = st.selectbox(
-        "재질 선택", ["석조", "목조", "금속", "회화", "기타"]
-    )
-with col2:
-    selected_exposure = st.selectbox("노출 정도 선택", ["실외", "반실외", "실내"])
-
-if st.button("🔄 실시간 최근 7일 위험도 예측 실행"):
-    with st.spinner(
-        "최근 기상/미세먼지 데이터를 안전하게 불러와 예측 중입니다..."
-    ):
-        df_recent = fetch_recent_7days_data()
+# 실행 버튼
+if st.button("🚀 영천시 문화재 최신 위험도 분석 실행"):
+    with st.spinner("최근 기상 및 대기오염 데이터를 동기화하여 영천시 문화재별 위험도를 예측 중입니다..."):
+        df_recent = fetch_latest_prediction_data()
 
         if df_recent is not None and not df_recent.empty:
-            df_recent["material"] = selected_material
-            df_recent["exposure"] = selected_exposure
-            df_7days = df_recent.tail(7).copy()
+            # 가장 마지막에 마감된 최신 날짜의 데이터 한 행 추출
+            latest_row = df_recent.iloc[-1].copy()
+            target_date = latest_row["date"].strftime("%Y-%m-%d")
 
-            X_input = df_7days[[
-                "temp_avg",
-                "temp_max",
-                "temp_min",
-                "humidity",
-                "rainfall",
-                "wind_speed",
-                "solar_radiation",
-                "ground_temp",
-                "pm10",
-                "pm25",
-                "o3",
-                "no2",
-                "co",
-                "so2",
-                "temp_range",
-                "humidity_std3",
-                "rainfall_7d",
-                "high_humidity_risk",
-                "weathering_risk",
-                "mold_risk",
-                "pm_load",
-                "acid_risk",
-                "oxidation_risk",
-                "corrosion_risk",
-                "material",
-                "exposure",
-            ]]
-            X_input_encoded = pd.get_dummies(
-                X_input, columns=["material", "exposure"]
-            )
+            st.success(f"✅ 최신 데이터 기준일: **{target_date}** (영천 관측소 및 대기 데이터 연동 완료)")
 
-            for col in feature_cols:
-                if col not in X_input_encoded.columns:
-                    X_input_encoded[col] = 0
-            X_input_encoded = X_input_encoded[feature_cols]
+            # 영천시 문화재별로 최신 환경 데이터를 대입하여 예측 수행
+            results = []
+            for heritage in YEONGCHEON_HERITAGES:
+                row_data = latest_row.to_dict()
+                row_data["material"] = heritage["material"]
+                row_data["exposure"] = heritage["exposure"]
 
-            df_7days["예측_위험등급"] = model.predict(X_input_encoded)
+                single_df = pd.DataFrame([row_data])
+                X_input = single_df[[
+                    "temp_avg", "temp_max", "temp_min", "humidity", "rainfall",
+                    "wind_speed", "solar_radiation", "ground_temp", "pm10", "pm25",
+                    "o3", "no2", "co", "so2", "temp_range", "humidity_std3",
+                    "rainfall_7d", "high_humidity_risk", "weathering_risk",
+                    "mold_risk", "pm_load", "acid_risk", "oxidation_risk",
+                    "corrosion_risk", "material", "exposure"
+                ]]
+                
+                X_input_encoded = pd.get_dummies(X_input, columns=["material", "exposure"])
+                for col in feature_cols:
+                    if col not in X_input_encoded.columns:
+                        X_input_encoded[col] = 0
+                X_input_encoded = X_input_encoded[feature_cols]
 
-            st.subheader(
-                f"📅 최근 7일 예측 결과 ({df_7days['date'].min().strftime('%Y-%m-%d')} ~ {df_7days['date'].max().strftime('%Y-%m-%d')})"
-            )
+                pred = model.predict(X_input_encoded)[0]
+
+                results.append({
+                    "문화재명": heritage["문화재명"],
+                    "구분": heritage["종류"],
+                    "재질": heritage["material"],
+                    "노출환경": heritage["exposure"],
+                    "예측 위험등급": pred,
+                    "평균기온(℃)": latest_row["temp_avg"],
+                    "습도(%)": latest_row["humidity"],
+                    "미세먼지(PM10)": latest_row["pm10"],
+                })
+
+            result_df = pd.DataFrame(results)
+
+            # 등급별 색상 강조를 위한 스타일 함수
+            def highlight_risk(val):
+                if val == "위험":
+                    return "background-color: #ffcccc; color: #990000; font-weight: bold;"
+                elif val == "주의":
+                    return "background-color: #ffe5cc; color: #994c00; font-weight: bold;"
+                else:
+                    return "background-color: #ccffcc; color: #006600; font-weight: bold;"
+
+            st.markdown("---")
+            st.subheader(f"📊 영천시 주요 문화재별 최신 위험 예측 현황 ({target_date})")
+            
+            # 스타일을 적용한 데이터프레임 출력
             st.dataframe(
-                df_7days[[
-                    "date",
-                    "material",
-                    "exposure",
-                    "temp_avg",
-                    "humidity",
-                    "pm10",
-                    "pm25",
-                    "예측_위험등급",
-                ]],
+                result_df.style.applymap(highlight_risk, subset=["예측 위험등급"]),
                 use_container_width=True,
+                height=350
             )
 
-            st.subheader("📊 최근 7일간 예측 등급 변화")
-            st.bar_chart(
-                df_7days.set_index("date")["예측_위험등급"].value_counts()
-            )
+            # 요약 메트릭
+            st.markdown("---")
+            m1, m2, m3 = st.columns(3)
+            danger_count = (result_df["예측 위험등급"] == "위험").sum()
+            caution_count = (result_df["예측 위험등급"] == "주의").sum()
+            safe_count = (result_df["예측 위험등급"] == "안전").sum()
+
+            m1.metric("🚨 위험 단계 문화재 수", f"{danger_count} 곳")
+            m2.metric("⚠️ 주의 단계 문화재 수", f"{caution_count} 곳")
+            m3.metric("✅ 안전 단계 문화재 수", f"{safe_count} 곳")
+
+            # 최근 7일간의 날짜별 트렌드도 함께 제공
+            st.markdown("---")
+            st.subheader("📈 최근 7일간 전체 영천시 기상 기반 위험도 추이")
+            
+            df_7days = df_recent.tail(7).copy()
+            # 예시로 대표 재질(목조/실외) 기준 7일 예측
+            trend_results = []
+            for _, r in df_7days.iterrows():
+                r_dict = r.to_dict()
+                r_dict["material"] = "목조"
+                r_dict["exposure"] = "실외"
+                s_df = pd.DataFrame([r_dict])
+                X_in = s_df[list(X_input.columns)]
+                X_in_enc = pd.get_dummies(X_in, columns=["material", "exposure"])
+                for col in feature_cols:
+                    if col not in X_in_enc.columns:
+                        X_in_enc[col] = 0
+                X_in_enc = X_in_enc[feature_cols]
+                p = model.predict(X_in_enc)[0]
+                trend_results.append({"date": r["date"].strftime("%Y-%m-%d"), "위험등급": p})
+            
+            trend_df = pd.DataFrame(trend_results)
+            st.bar_chart(trend_df.set_index("date")["위험등급"].value_counts())
