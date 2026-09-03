@@ -343,7 +343,7 @@ with right_col:
     <div style="{title_style}">🏛 문화재 보존 관리 현황</div>
     <hr style="margin: 4px 0;">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
-        <div style="{label_style}">실시간 모니터링 대상 문화재 총 수</div>
+        <div style="{label_style}">실시간 모니터링 대상 문화재</div>
         <div style="font-size:18px; font-weight:700; color:#1f2937;">{len(df)}개</div>
     </div>
 </div>
