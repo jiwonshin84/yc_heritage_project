@@ -54,7 +54,7 @@ AWS_MIN_URL = "https://apihub.kma.go.kr/api/typ01/cgi-bin/url/nph-aws2_min"
 # 한국환경공단 시도별 실시간 대기오염 측정 정보 API URL
 AIR_URL = "http://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty"
 
-# 💡 사용자가 직접 지정해주신 위치 배치에 맞춘 관측소 좌표 설정
+# 관측소 좌표 설정
 STATION_MAP = {
     "신녕": {"id": "853", "lat": 36.0150, "lon": 128.6100},  # 지도 왼쪽
     "화산": {"id": "854", "lat": 36.0250, "lon": 128.7800},  # 신녕 오른쪽
@@ -248,19 +248,21 @@ st.divider()
 
 # 카드 스타일 정의
 title_style = (
-    "font-size:18px; font-weight:700; margin-bottom:8px; color:#1f2937;"
+    "font-size:16px; font-weight:700; margin-bottom:6px; color:#1f2937;"
 )
-label_style = "font-size:13px; color:#6b7280; margin-bottom:2px;"
+label_style = "font-size:12px; color:#6b7280; margin-bottom:2px;"
 
 # --------------------------------------------
-# 1행 : [좌측] 실시간 날씨 지도 & [우측] 대기오염 및 문화재 현황
+# 1행 : [좌측] 실시간 날씨 지도(확대) & [우측] 대기오염 및 문화재 현황(축소)
 # --------------------------------------------
 st.markdown(
     '<h3 style="font-size:20px; margin-bottom:10px;">🗺 영천시 지역별 실시간'
     " 기상 지도 및 대기/문화재 현황</h3>",
     unsafe_allow_html=True,
 )
-map_col, right_col = st.columns([1.4, 1.0])
+
+# 💡 지도가 더 크고 넓게 보이도록 비율을 [1.8, 1.0]으로 조정
+map_col, right_col = st.columns([1.8, 1.0])
 
 with map_col:
   st.markdown(
@@ -272,7 +274,7 @@ with map_col:
   # 영천시 중심 설정 및 줌 레벨 10
   m = folium.Map(location=[36.06, 128.85], zoom_start=10)
 
-  # 💡 각 상자가 겹치지 않도록 깔끔하게 분산 배치
+  # 각 상자 배치
   for name, info in STATION_MAP.items():
     w_data = weather_results[name]
 
@@ -331,28 +333,30 @@ with map_col:
         ),
     ).add_to(m)
 
-  st_folium(m, width="100%", height=400, key="weather_map")
+  # 💡 지도 높이도 함께 키워서 더 시원시원하게 표시 (height=460)
+  st_folium(m, width="100%", height=460, key="weather_map")
 
 with right_col:
+  # 💡 우측 카드들의 패딩과 글씨 크기를 약간 줄여서 컴팩트하게 구성
   # 1. 대기현황 카드
   st.markdown(
       f"""
-<div style="background-color:#f8f9fa; padding:16px; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,0.04); margin-bottom:12px;">
+<div style="background-color:#f8f9fa; padding:12px 14px; border-radius:14px; border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,0.04); margin-bottom:10px;">
     <div style="{title_style}">🌫 대기오염 현황 (영천 측정소)</div>
     <hr style="margin: 4px 0;">
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px;">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:4px;">
         <div>
-            <div style="{label_style}">PM10 (미세먼지)</div><div style="font-size:15px; font-weight:700; color:#111827; margin-bottom:4px;">{air_data['pm10']} ㎍/㎥</div>
-            <div style="{label_style}">O₃ (오존)</div><div style="font-size:15px; font-weight:700; color:#111827; margin-bottom:4px;">{air_data['o3']} ppm</div>
-            <div style="{label_style}">CO (일산화탄소)</div><div style="font-size:15px; font-weight:700; color:#111827;">{air_data['co']} ppm</div>
+            <div style="{label_style}">PM10 (미세먼지)</div><div style="font-size:14px; font-weight:700; color:#111827; margin-bottom:3px;">{air_data['pm10']} ㎍/㎥</div>
+            <div style="{label_style}">O₃ (오존)</div><div style="font-size:14px; font-weight:700; color:#111827; margin-bottom:3px;">{air_data['o3']} ppm</div>
+            <div style="{label_style}">CO (일산화탄소)</div><div style="font-size:14px; font-weight:700; color:#111827;">{air_data['co']} ppm</div>
         </div>
         <div>
-            <div style="{label_style}">PM2.5 (초미세먼지)</div><div style="font-size:15px; font-weight:700; color:#111827; margin-bottom:4px;">{air_data['pm25']} ㎍/㎥</div>
-            <div style="{label_style}">NO₂ (이산화질소)</div><div style="font-size:15px; font-weight:700; color:#111827; margin-bottom:4px;">{air_data['no2']} ppm</div>
-            <div style="{label_style}">SO₂ (아황산가스)</div><div style="font-size:15px; font-weight:700; color:#111827;">{air_data['so2']} ppm</div>
+            <div style="{label_style}">PM2.5 (초미세먼지)</div><div style="font-size:14px; font-weight:700; color:#111827; margin-bottom:3px;">{air_data['pm25']} ㎍/㎥</div>
+            <div style="{label_style}">NO₂ (이산화질소)</div><div style="font-size:14px; font-weight:700; color:#111827; margin-bottom:3px;">{air_data['no2']} ppm</div>
+            <div style="{label_style}">SO₂ (아황산가스)</div><div style="font-size:14px; font-weight:700; color:#111827;">{air_data['so2']} ppm</div>
         </div>
     </div>
-    <div style="font-size:11px; color:#9ca3af; margin-top:8px;">⏱ 측정 시각 : {air_data['data_time']}</div>
+    <div style="font-size:10px; color:#9ca3af; margin-top:6px;">⏱ 측정 시각 : {air_data['data_time']}</div>
 </div>
     """,
       unsafe_allow_html=True,
@@ -361,12 +365,12 @@ with right_col:
   # 2. 대기현황 밑에 위치한 문화재 수 카드
   st.markdown(
       f"""
-<div style="background-color:#f8f9fa; padding:16px; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,0.04);">
+<div style="background-color:#f8f9fa; padding:12px 14px; border-radius:14px; border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,0.04);">
     <div style="{title_style}">🏛 문화재 보존 관리 현황</div>
     <hr style="margin: 4px 0;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
         <div style="{label_style}">실시간 모니터링 대상 문화재 총 수</div>
-        <div style="font-size:22px; font-weight:700; color:#1f2937;">{len(df)}개소</div>
+        <div style="font-size:18px; font-weight:700; color:#1f2937;">{len(df)}개소</div>
     </div>
 </div>
     """,
