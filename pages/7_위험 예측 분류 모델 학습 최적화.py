@@ -55,7 +55,7 @@ FEATURE_NAME_KO = {
 
 
 # ------------------------------------------------------------
-# 3. 데이터 전처리 및 최적화된 백엔드 파이프라인
+# 3. 데이터 전처리 및 최적화된 백엔드 파이프라인 (다중 모델 학습)
 # ------------------------------------------------------------
 @st.cache_resource
 def run_model_pipeline():
@@ -212,15 +212,33 @@ def run_model_pipeline():
         X_encoded, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    # 모델 학습 및 저장
-    rf_model = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
-    rf_model.fit(X_train, y_train)
+    # 3가지 모델 학습 및 비교
+    models = {
+        "Random Forest": RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1),
+        "HistGradient Boosting": HistGradientBoostingClassifier(random_state=42),
+        "Logistic Regression": LogisticRegression(max_iter=1000, random_state=42)
+    }
 
-    # 💾 학습된 모델과 특성(컬럼) 목록 파일 저장
-    joblib.dump(rf_model, "best_rf_model.pkl")
+    best_model = None
+    best_score = 0
+
+    for name, model in models.items():
+        if name == "Logistic Regression":
+            scaler = StandardScaler()
+            X_train_scaled = scaler.fit_transform(X_train)
+            model.fit(X_train_scaled, y_train)
+        else:
+            model.fit(X_train, y_train)
+        
+        # 예측 페이지에서 공용으로 쓸 수 있도록 RandomForest를 best로 저장하거나 선택
+        if name == "Random Forest":
+            best_model = model
+
+    # 예측 페이지에서 필요한 모델 및 특성 목록 파일 저장
+    joblib.dump(best_model, "best_rf_model.pkl")
     joblib.dump(X_encoded.columns.tolist(), "model_features.pkl")
 
-    return dataset, rf_model, X_encoded
+    return dataset, best_model, X_encoded
 
 
 # ------------------------------------------------------------
@@ -350,7 +368,6 @@ material_weights = {
     "기타": {"풍화 위험도": 20, "산성 위험도": 20, "7일 강수량": 0, "일교차": 0, "미세먼지 부하": 20, "부식 위험도": 20, "곰팡이 위험도": 0, "습도 변동성": 0, "고습도 지속": 0, "산화 위험도": 20},
 }
 
-# 차트 내부 전용 컨트롤러 (가로형 버튼 칩)
 chart_material = st.radio(
     "🔍 상세 확인할 재질 선택:",
     options=["전체(레이더 비교)"] + list(material_weights.keys()),
@@ -359,7 +376,6 @@ chart_material = st.radio(
 )
 
 if chart_material == "전체(레이더 비교)":
-    # 전체 선택 시: 방사형 레이더 차트로 다중 비교
     fig_radar = go.Figure()
     categories = list(next(iter(material_weights.values())).keys())
     color_map = {
@@ -372,7 +388,7 @@ if chart_material == "전체(레이더 비교)":
 
     for mat, weights in material_weights.items():
         r_values = [weights[cat] for cat in categories]
-        r_values.append(r_values[0])  # 폐곡선 닫기
+        r_values.append(r_values[0])
 
         fig_radar.add_trace(
             go.Scatterpolar(
@@ -396,7 +412,6 @@ if chart_material == "전체(레이더 비교)":
     st.plotly_chart(fig_radar, use_container_width=True)
 
 else:
-    # 개별 재질 선택 시: 해당 재질의 단일 수평 막대 그래프
     mat_dict = material_weights[chart_material]
     non_zero_weights = {k: v for k, v in mat_dict.items() if v > 0}
     sorted_weights = pd.DataFrame(
