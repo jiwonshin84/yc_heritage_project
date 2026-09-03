@@ -161,7 +161,6 @@ def get_air_pollution_data():
       "no2": "-",
       "co": "-",
       "so2": "-",
-(truncated)
       "data_time": "-",
   }
 
@@ -265,7 +264,7 @@ with map_col:
       unsafe_allow_html=True,
   )
 
-  # 💡 2. 화북(북쪽)과 신녕(서쪽)이 완전히 들어오도록 중심 좌표를 위/왼쪽으로 이동하고 줌 레벨을 9.0으로 넓힘
+  # 화북(북쪽)과 신녕(서쪽)이 완전히 들어오도록 줌 레벨 조정
   m = folium.Map(location=[36.08, 128.73], zoom_start=9.0)
 
   # 각 상자 배치
