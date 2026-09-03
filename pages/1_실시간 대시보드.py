@@ -225,6 +225,7 @@ st.divider()
 
 # 카드 스타일 정의
 aws_card_style = "background-color:#f8f9fa; padding:18px; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,0.04); min-height:280px;"
+bottom_card_style = "background-color:#f8f9fa; padding:22px; border-radius:20px; border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,0.05); min-height:260px;"
 title_style = (
     "font-size:18px; font-weight:700; margin-bottom:8px; color:#1f2937;"
 )
@@ -235,7 +236,7 @@ value_style = (
 time_style = "font-size:12px; color:#9ca3af; margin-top:15px;"
 
 # --------------------------------------------
-# 1행 : [좌측] 실시간 날씨 지도(겹침 방지 줌 & 분산 배치) & [우측] 대기오염 및 문화재 현황
+# 1행 : [좌측] 실시간 날씨 지도(확대된 뷰 & 정보 상시 노출) & [우측] 대기오염 및 문화재 현황
 # --------------------------------------------
 st.markdown(
     '<h3 style="font-size:22px; margin-bottom:15px;">🗺 영천시 지역별 실시간 기상'
@@ -247,31 +248,18 @@ map_col, right_col = st.columns([1.4, 1.0])
 with map_col:
   st.markdown(
       "<p style='font-size:14px; color:#4b5563; margin-bottom:8px;'>📍 관측소별"
-      " 정보 상자가 겹치지 않도록 분산 배치된 확대 지도</p>",
+      " 상세 날씨 정보(기온·습도·강수·풍속)가 겹치지 않도록 확대된 지도</p>",
       unsafe_allow_html=True,
   )
 
-  # 영천시 중심 좌표 기준, 줌 레벨을 12로 더 확대하여 간격 확보
-  m = folium.Map(location=[36.01, 128.87], zoom_start=12)
+  # 영천시 중심 좌표 기준, 줌 레벨을 10 -> 11로 한번 더 확대
+  m = folium.Map(location=[36.03, 128.87], zoom_start=11)
 
-  # 각 관측소별로 겹치지 않게 오프셋(위치)을 다르게 설정
+  # 각 관측소별 상시 노출될 HTML 박스 아이콘 설정
   for name, info in STATION_MAP.items():
     w_data = weather_results[name]
 
-    # 관측소별로 상자가 겹치지 않게 CSS 마진(위치) 개별 조절
-    if name == "영천(종합)":
-      offset_style = "margin-left: 10px; margin-top: 10px;"  # 우측 아래로
-      anchor_val = (20, 20)
-    elif name == "청통":
-      offset_style = "margin-left: -150px; margin-top: 10px;"  # 좌측 아래로
-      anchor_val = (160, 20)
-    elif name == "신령":
-      offset_style = "margin-left: -150px; margin-top: -110px;"  # 좌측 위로
-      anchor_val = (160, 110)
-    else:  # 화북
-      offset_style = "margin-left: -70px; margin-top: -110px;"  # 상단 중앙 위로
-      anchor_val = (80, 110)
-
+    # 지도 위에 클릭 없이 바로 표출될 HTML 카드 스타일 디자인
     label_html = f"""
         <div style="
             background-color: white; 
@@ -285,7 +273,6 @@ with map_col:
             width: 140px;
             text-align: left;
             white-space: nowrap;
-            {offset_style}
         ">
             <div style="color: #1d4ed8; border-bottom: 1px solid #e5e7eb; padding-bottom: 2px; margin-bottom: 3px;">📍 {name}</div>
             <div>🌡 기온: {w_data['temp']}°C</div>
@@ -295,13 +282,17 @@ with map_col:
         </div>
         """
 
+    # Folium DivIcon을 사용해 지도 위에 고정 상시 텍스트 상자 표시
     folium.Marker(
         location=[info["lat"], info["lon"]],
         icon=folium.DivIcon(
-            html=label_html, icon_size=(140, 90), icon_anchor=anchor_val
+            html=label_html,
+            icon_size=(140, 90),
+            icon_anchor=(70, 45),
         ),
     ).add_to(m)
 
+  # Streamlit 화면에 Folium 지도 출력
   st_folium(m, width="100%", height=400, key="weather_map")
 
 with right_col:
