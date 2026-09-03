@@ -19,7 +19,7 @@ st.set_page_config(
     layout="wide",
 )
 
-# 💡 상단 기본 여백을 완전히 없애서 최상단부터 채우도록 설정
+# 상단 기본 여백을 완전히 없애서 최상단부터 채우도록 설정
 st.markdown(
     """
     <style>
@@ -54,16 +54,12 @@ AWS_MIN_URL = "https://apihub.kma.go.kr/api/typ01/cgi-bin/url/nph-aws2_min"
 # 한국환경공단 시도별 실시간 대기오염 측정 정보 API URL
 AIR_URL = "http://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty"
 
-# 💡 관측소 좌표 설정 (청통 명칭 복원 및 위치 배치 반영)
+# 관측소 좌표 설정
 STATION_MAP = {
-    "신녕": {"id": "853", "lat": 36.0150, "lon": 128.6100},  # 지도 왼쪽
-    "청통": {"id": "854", "lat": 36.0250, "lon": 128.7800},  # 신녕 오른쪽
-    "화북": {"id": "855", "lat": 36.1700, "lon": 128.9300},  # 지도 위쪽
-    "영천(종합)": {
-        "id": "281",
-        "lat": 35.9650,
-        "lon": 128.9400,
-    },  # 지도 오른쪽/남동쪽
+    "신녕": {"id": "853", "lat": 36.0150, "lon": 128.6100},
+    "청통": {"id": "854", "lat": 36.0250, "lon": 128.7800},
+    "화북": {"id": "855", "lat": 36.1700, "lon": 128.9300},
+    "영천(종합)": {"id": "281", "lat": 35.9650, "lon": 128.9400},
 }
 
 
@@ -143,14 +139,12 @@ def get_aws_weather_data(stn_id):
         parts = [p.strip() for p in data_line.split(",")]
 
         if len(parts) >= 15:
-          aws_data["obs_time"] = parts[0]  # TM (관측시각)
-          aws_data["wind_dir"] = degree_to_direction(
-              parts[2]
-          )  # WD1 (1분 평균 풍향)
-          aws_data["wind_speed"] = safe_val(parts[3])  # WS1 (1분 평균 풍속)
-          aws_data["temp"] = safe_val(parts[8])  # TA (1분 평균 기온)
-          aws_data["rainfall"] = safe_val(parts[10], "0.0")  # RN-15m
-          aws_data["humidity"] = safe_val(parts[14])  # HM (분 평균 상대습도)
+          aws_data["obs_time"] = parts[0]
+          aws_data["wind_dir"] = degree_to_direction(parts[2])
+          aws_data["wind_speed"] = safe_val(parts[3])
+          aws_data["temp"] = safe_val(parts[8])
+          aws_data["rainfall"] = safe_val(parts[10], "0.0")
+          aws_data["humidity"] = safe_val(parts[14])
   except Exception:
     pass
 
@@ -243,6 +237,9 @@ st.info(
     f"🔄 **실시간 자동 동기화 중** (마지막 화면 동기화: {current_kst}) — 관측소"
     " 수집 전송 지연에 따라 실측 시각과 차이가 발생할 수 있습니다."
 )
+
+st.divider()
+
 # 카드 스타일 정의
 title_style = (
     "font-size:16px; font-weight:700; margin-bottom:6px; color:#1f2937;"
@@ -258,7 +255,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 지도가 더 크고 넓게 보이도록 비율을 [1.8, 1.0]으로 조정
 map_col, right_col = st.columns([1.8, 1.0])
 
 with map_col:
@@ -268,14 +264,13 @@ with map_col:
       unsafe_allow_html=True,
   )
 
-  # 영천시 중심 설정 및 줌 레벨 10
-  m = folium.Map(location=[36.06, 128.85], zoom_start=10)
+  # 💡 1. 영천시 전체 관측소(신녕, 청통, 화북, 영천종합)가 모두 들어오도록 중심 좌표 이동 및 줌 레벨 조정 (zoom_start=9.5 또는 9)
+  m = folium.Map(location=[36.07, 128.77], zoom_start=9.8)
 
   # 각 상자 배치
   for name, info in STATION_MAP.items():
     w_data = weather_results[name]
 
-    # 관측 시각 포맷팅 (YYYY-MM-DD HH:MM 형태)
     obs_time_fmt = w_data["obs_time"]
     if len(obs_time_fmt) == 12:
       obs_time_fmt = (
@@ -283,16 +278,16 @@ with map_col:
           f" {obs_time_fmt[8:10]}:{obs_time_fmt[10:12]}"
       )
 
-    if name == "신녕":  # 왼쪽
+    if name == "신녕":
       offset_style = "margin-left: -170px; margin-top: -50px;"
       anchor_val = (170, 50)
-    elif name == "청통":  # 신녕 오른쪽
+    elif name == "청통":
       offset_style = "margin-left: 10px; margin-top: -80px;"
       anchor_val = (0, 80)
-    elif name == "화북":  # 위쪽
+    elif name == "화북":
       offset_style = "margin-left: -85px; margin-top: -130px;"
       anchor_val = (85, 130)
-    else:  # 영천(종합) - 오른쪽 아래
+    else:  # 영천(종합)
       offset_style = "margin-left: 10px; margin-top: 10px;"
       anchor_val = (0, 0)
 
@@ -330,7 +325,6 @@ with map_col:
         ),
     ).add_to(m)
 
-  # 지도 높이 키움 (height=460)
   st_folium(m, width="100%", height=460, key="weather_map")
 
 with right_col:
