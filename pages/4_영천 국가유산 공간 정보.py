@@ -155,7 +155,7 @@ if selected_era != "전체":
 if selected_type != "전체":
   filtered_df = filtered_df[filtered_df["국가유산종목"] == selected_type]
 
-st.sidebar.metric("검색 결과", f"{len(filtered_df)} 건")
+# (사이드바의 기존 metric 코드는 제거하고 지도 위로 이동)
 
 if filtered_df.empty:
   st.warning("조건에 맞는 유산이 없습니다.")
@@ -184,7 +184,27 @@ center_lon = selected_row["경도"]
 map_col, list_col = st.columns([3.3, 1.2])
 
 with map_col:
-  # 실시간 대시보드와 동일한 기본 OpenStreetMap 지도 생성
+  # 🗺️ 지도 영역 상단에 검색 결과 수 표시 배너 추가
+  st.markdown(
+      f"""
+        <div style="
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            background-color: #f8f9fa; 
+            padding: 8px 14px; 
+            border-radius: 8px; 
+            border: 1px solid #e5e7eb; 
+            margin-bottom: 8px;
+        ">
+            <span style="font-size: 13px; font-weight: 600; color: #374151;">📍 영천시 국가유산 분포 지도</span>
+            <span style="font-size: 13px; font-weight: 700; color: #1d4ed8;">검색 결과: {len(filtered_df)} 건</span>
+        </div>
+    """,
+      unsafe_allow_html=True,
+  )
+
+  # 기본 OpenStreetMap 지도 생성
   m = folium.Map(location=[center_lat, center_lon], zoom_start=15)
 
   # 마커 클러스터 및 히트맵 추가
@@ -233,8 +253,8 @@ with map_col:
   # 레이어 컨트롤러
   folium.LayerControl(collapsed=False).add_to(m)
 
-  # 지도 출력
-  st_folium(m, width="100%", height=720, key="gis_map")
+  # 지도 출력 (높이 조절: 660px로 맞춰서 상단 배너와 높이 균형 유지)
+  st_folium(m, width="100%", height=660, key="gis_map")
 
 with list_col:
   st.subheader("📋 유산 목록")
