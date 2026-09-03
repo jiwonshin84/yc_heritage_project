@@ -230,7 +230,7 @@ title_style = (
 label_style = "font-size:13px; color:#6b7280; margin-bottom:2px;"
 
 # --------------------------------------------
-# 1행 : [좌측] 실시간 날씨 지도(영천시 집중 줌 설정) & [우측] 대기오염 및 문화재 현황
+# 1행 : [좌측] 실시간 날씨 지도(정보 상자가 지도 안쪽에 오도록 보정) & [우측] 대기오염 및 문화재 현황
 # --------------------------------------------
 st.markdown(
     '<h3 style="font-size:22px; margin-bottom:15px;">🗺 영천시 지역별 실시간 기상'
@@ -246,10 +246,10 @@ with map_col:
       unsafe_allow_html=True,
   )
 
-  # 영천시의 실제 중심 좌표(위도 36.015, 경도 128.855)로 맞추고 줌 레벨을 11로 설정하여 영천시 영역에 집중시킴
-  m = folium.Map(location=[36.015, 128.855], zoom_start=11)
+  # 영천시가 화면에 알맞게 들어오도록 줌 레벨 10 설정
+  m = folium.Map(location=[36.06, 128.85], zoom_start=10)
 
-  # 각 관측소별 상시 노출될 HTML 박스 아이콘 설정
+  # 각 관측소별 상시 노출될 HTML 박스 아이콘 설정 (지도 영역 안으로 들어오도록 오프셋 조정)
   for name, info in STATION_MAP.items():
     w_data = weather_results[name]
 
@@ -261,19 +261,19 @@ with map_col:
           f" {obs_time_fmt[8:10]}:{obs_time_fmt[10:12]}"
       )
 
-    # 관측소별 겹침 방지 오프셋 및 앵커 설정
+    # 💡 지도 테두리 바깥으로 짤리지 않도록 적당한 마진 및 앵커 적용
     if name == "영천(종합)":
-      offset_style = "margin-left: 10px; margin-top: 10px;"
-      anchor_val = (20, 20)
+      offset_style = "margin-left: -85px; margin-top: 10px;"
+      anchor_val = (85, 0)
     elif name == "청통":
-      offset_style = "margin-left: -170px; margin-top: 10px;"
-      anchor_val = (190, 20)
+      offset_style = "margin-left: -85px; margin-top: -110px;"
+      anchor_val = (85, 110)
     elif name == "신령":
-      offset_style = "margin-left: -170px; margin-top: -115px;"
-      anchor_val = (190, 115)
+      offset_style = "margin-left: 10px; margin-top: -50px;"
+      anchor_val = (0, 50)
     else:  # 화북
-      offset_style = "margin-left: -85px; margin-top: -115px;"
-      anchor_val = (100, 115)
+      offset_style = "margin-left: -85px; margin-top: 10px;"
+      anchor_val = (85, 0)
 
     label_html = f"""
         <div style="
