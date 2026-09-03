@@ -57,7 +57,7 @@ AIR_URL = "http://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesu
 # 영천 주요 관측소 정보 (지점 번호 및 위경도 좌표 정의)
 STATION_MAP = {
     "영천(종합)": {"id": "281", "lat": 35.97742, "lon": 128.9514},
-    "신령": {"id": "853", "lat": 36.0520, "lon": 128.7650},
+    "신녕": {"id": "853", "lat": 36.0520, "lon": 128.7650},
     "청통": {"id": "854", "lat": 35.9720, "lon": 128.8310},
     "화북": {"id": "855", "lat": 36.1600, "lon": 128.9300},
 }
@@ -286,7 +286,7 @@ with map_col:
     elif name == "청통":  # 💡 청통 상자를 오른쪽으로 더 확실하게 이동 (margin-left: 85px)
       offset_style = "margin-left: 85px; margin-top: -110px;"
       anchor_val = (-85, 110)
-    elif name == "신령":
+    elif name == "신녕":
       offset_style = "margin-left: 10px; margin-top: 10px;"
       anchor_val = (0, 0)
     else:  # 화북
