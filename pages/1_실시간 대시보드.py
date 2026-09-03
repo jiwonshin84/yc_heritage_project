@@ -294,8 +294,8 @@ with map_col:
       anchor_val = (0, BOX_H // 2)
     elif name == "화북":  # 지도 북동쪽 끝 -> 상자를 마커 왼쪽 아래에 배치
       anchor_val = (BOX_W, 0)
-    elif name == "영천(종합)":  # 지도 남동쪽 끝 -> 상자를 마커 왼쪽 위에 배치
-      anchor_val = (BOX_W, BOX_H)
+    elif name == "영천(종합)":  # 청통과 가까워 겹치므로, 마커 위쪽에서 오른쪽으로 더 치우치게 배치
+      anchor_val = (BOX_W - 100, BOX_H)
     else:  # 청통 (중앙 부근) -> 상자를 마커 오른쪽 아래에 배치
       anchor_val = (0, 0)
 
