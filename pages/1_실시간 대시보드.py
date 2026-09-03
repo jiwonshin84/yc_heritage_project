@@ -224,19 +224,13 @@ st.info(
 st.divider()
 
 # 카드 스타일 정의
-aws_card_style = "background-color:#f8f9fa; padding:18px; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,0.04); min-height:280px;"
-bottom_card_style = "background-color:#f8f9fa; padding:22px; border-radius:20px; border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,0.05); min-height:260px;"
 title_style = (
     "font-size:18px; font-weight:700; margin-bottom:8px; color:#1f2937;"
 )
 label_style = "font-size:13px; color:#6b7280; margin-bottom:2px;"
-value_style = (
-    "font-size:18px; font-weight:700; color:#111827; margin-bottom:10px;"
-)
-time_style = "font-size:12px; color:#9ca3af; margin-top:15px;"
 
 # --------------------------------------------
-# 1행 : [좌측] 실시간 날씨 지도(확대된 뷰 & 정보 상시 노출) & [우측] 대기오염 및 문화재 현황
+# 1행 : [좌측] 실시간 날씨 지도(정보 상자 내부 정렬 개편) & [우측] 대기오염 및 문화재 현황
 # --------------------------------------------
 st.markdown(
     '<h3 style="font-size:22px; margin-bottom:15px;">🗺 영천시 지역별 실시간 기상'
@@ -248,51 +242,74 @@ map_col, right_col = st.columns([1.4, 1.0])
 with map_col:
   st.markdown(
       "<p style='font-size:14px; color:#4b5563; margin-bottom:8px;'>📍 관측소별"
-      " 상세 날씨 정보(기온·습도·강수·풍속)가 겹치지 않도록 확대된 지도</p>",
+      " 상세 날씨 정보가 겹치지 않도록 분산 배치된 확대 지도</p>",
       unsafe_allow_html=True,
   )
 
-  # 영천시 중심 좌표 기준, 줌 레벨을 10 -> 11로 한번 더 확대
-  m = folium.Map(location=[36.03, 128.87], zoom_start=11)
+  # 영천시 중심 좌표 기준, 줌 레벨 12
+  m = folium.Map(location=[36.01, 128.87], zoom_start=12)
 
   # 각 관측소별 상시 노출될 HTML 박스 아이콘 설정
   for name, info in STATION_MAP.items():
     w_data = weather_results[name]
 
-    # 지도 위에 클릭 없이 바로 표출될 HTML 카드 스타일 디자인
+    # 관측 시각 포맷팅 (YYYY-MM-DD HH:MM 형태)
+    obs_time_fmt = w_data["obs_time"]
+    if len(obs_time_fmt) == 12:
+      obs_time_fmt = (
+          f"{obs_time_fmt[:4]}-{obs_time_fmt[4:6]}-{obs_time_fmt[6:8]}"
+          f" {obs_time_fmt[8:10]}:{obs_time_fmt[10:12]}"
+      )
+
+    # 관측소별 겹침 방지 오프셋 및 앵커 설정
+    if name == "영천(종합)":
+      offset_style = "margin-left: 10px; margin-top: 10px;"
+      anchor_val = (20, 20)
+    elif name == "청통":
+      offset_style = "margin-left: -170px; margin-top: 10px;"
+      anchor_val = (190, 20)
+    elif name == "신령":
+      offset_style = "margin-left: -170px; margin-top: -115px;"
+      anchor_val = (190, 115)
+    else:  # 화북
+      offset_style = "margin-left: -85px; margin-top: -115px;"
+      anchor_val = (100, 115)
+
+    # 기온/습도 한 줄, 강수/풍속 한 줄, 맨 아래 관측 시각이 들어가도록 구성한 HTML
     label_html = f"""
         <div style="
             background-color: white; 
             border: 2px solid #1e3a8a; 
             border-radius: 8px; 
             padding: 6px 10px; 
-            font-size: 12px; 
+            font-size: 11px; 
             font-weight: bold; 
             color: #1f2937; 
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            width: 140px;
+            width: 170px;
             text-align: left;
-            white-space: nowrap;
+            {offset_style}
         ">
-            <div style="color: #1d4ed8; border-bottom: 1px solid #e5e7eb; padding-bottom: 2px; margin-bottom: 3px;">📍 {name}</div>
-            <div>🌡 기온: {w_data['temp']}°C</div>
-            <div>💧 습도: {w_data['humidity']}%</div>
-            <div>🌧 강수: {w_data['rainfall']}mm</div>
-            <div>💨 풍속: {w_data['wind_speed']}m/s</div>
+            <div style="color: #1d4ed8; border-bottom: 1px solid #e5e7eb; padding-bottom: 2px; margin-bottom: 4px;">📍 {name}</div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                <span>🌡 {w_data['temp']}°C</span>
+                <span>💧 {w_data['humidity']}%</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                <span>🌧 {w_data['rainfall']}mm</span>
+                <span>💨 {w_data['wind_speed']}m/s ({w_data['wind_dir']})</span>
+            </div>
+            <div style="font-size: 9px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 2px;">⏱ {obs_time_fmt}</div>
         </div>
         """
 
-    # Folium DivIcon을 사용해 지도 위에 고정 상시 텍스트 상자 표시
     folium.Marker(
         location=[info["lat"], info["lon"]],
         icon=folium.DivIcon(
-            html=label_html,
-            icon_size=(140, 90),
-            icon_anchor=(70, 45),
+            html=label_html, icon_size=(170, 100), icon_anchor=anchor_val
         ),
     ).add_to(m)
 
-  # Streamlit 화면에 Folium 지도 출력
   st_folium(m, width="100%", height=400, key="weather_map")
 
 with right_col:
@@ -334,44 +351,6 @@ with right_col:
     """,
       unsafe_allow_html=True,
   )
-
-st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-
-# --------------------------------------------
-# 2행 : 기상 관측소 실시간 상세 카드 (영천(종합), 신령, 청통, 화북)
-# --------------------------------------------
-st.markdown(
-    '<h3 style="font-size:22px; margin-bottom:15px;">🌦 영천시 지역별 실시간 기상'
-    " 상세 현황 (AWS 1분 관측)</h3>",
-    unsafe_allow_html=True,
-)
-aws_cols = st.columns(4)
-
-for idx, (stn_name, w_data) in enumerate(weather_results.items()):
-  obs_time_fmt = w_data["obs_time"]
-  if len(obs_time_fmt) == 12:
-    obs_time_fmt = (
-        f"{obs_time_fmt[:4]}-{obs_time_fmt[4:6]}-{obs_time_fmt[6:8]}"
-        f" {obs_time_fmt[8:10]}:{obs_time_fmt[10:12]}"
-    )
-
-  with aws_cols[idx]:
-    st.markdown(
-        f"""
-<div style="{aws_card_style}">
-    <div style="{title_style}">📍 {stn_name} 관측소</div>
-    <hr style="margin: 8px 0;">
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px;">
-        <div><div style="{label_style}">🌡 기온 (1분)</div><div style="{value_style}">{w_data['temp']} °C</div></div>
-        <div><div style="{label_style}">💧 습도 (1분)</div><div style="{value_style}">{w_data['humidity']} %</div></div>
-        <div><div style="{label_style}">🌧 강수량</div><div style="{value_style}">{w_data['rainfall']} mm</div></div>
-        <div><div style="{label_style}">💨 풍속/풍향</div><div style="{value_style}">{w_data['wind_speed']} m/s<br><span style="font-size:13px; font-weight:normal; color:#4b5563;">({w_data['wind_dir']})</span></div></div>
-    </div>
-    <div style="{time_style}">⏱ 관측 시각: {obs_time_fmt}</div>
-</div>
-        """,
-        unsafe_allow_html=True,
-    )
 
 st.divider()
 st.caption("선화여고 - 영천 헤리티지 AI 탐구단")
