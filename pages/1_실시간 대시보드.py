@@ -3,11 +3,12 @@ import os
 import urllib.parse
 from zoneinfo import ZoneInfo
 
+import folium
 import pandas as pd
-import pydeck as pdk
 import requests
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
+from streamlit_folium import st_folium
 
 # ============================================
 # Streamlit 페이지 기본 설정
@@ -191,26 +192,10 @@ def get_air_pollution_data():
 current_kst = get_current_kst_time()
 
 weather_results = {}
-map_data_list = []
-
 for name, info in STATION_MAP.items():
-  w_data = get_aws_weather_data(info["id"])
-  weather_results[name] = w_data
-
-  # Pydeck 지도 시각화용 데이터 구성 (한글 지역명 및 기상 정보 문자열 결합)
-  map_data_list.append({
-      "name": name,
-      "lat": info["lat"],
-      "lon": info["lon"],
-      "text": (
-          f"[{name}]\n기온: {w_data['temp']}°C\n습도:"
-          f" {w_data['humidity']}%\n강수: {w_data['rainfall']}mm\n풍속:"
-          f" {w_data['wind_speed']}m/s"
-      ),
-  })
+  weather_results[name] = get_aws_weather_data(info["id"])
 
 air_data = get_air_pollution_data()
-df_map = pd.DataFrame(map_data_list)
 
 # ============================================
 # UI 레이아웃 구성
@@ -251,7 +236,7 @@ value_style = (
 time_style = "font-size:12px; color:#9ca3af; margin-top:15px;"
 
 # --------------------------------------------
-# 1행 : [좌측] 한글 실시간 기상 정보 지도 & [우측] 대기오염 및 문화재 현황
+# 1행 : [좌측] Folium 실시간 날씨 지도 & [우측] 대기오염 및 문화재 현황
 # --------------------------------------------
 st.markdown(
     '<h3 style="font-size:22px; margin-bottom:15px;">🗺 영천시 지역별 실시간 기상'
@@ -263,50 +248,34 @@ map_col, right_col = st.columns([1.4, 1.0])
 with map_col:
   st.markdown(
       "<p style='font-size:14px; color:#4b5563; margin-bottom:8px;'>📍 관측소별"
-      " 위치 및 1분 실시간 기상 데이터 시각화</p>",
+      " 마커를 클릭하거나 호버하여 실시간 날씨(기온·습도)를 확인하세요.</p>",
       unsafe_allow_html=True,
   )
 
-  # Pydeck을 이용해 한글 지명 및 실시간 데이터 레이어 구성
-  layer_scatter = pdk.Layer(
-      "ScatterPlotLayer",
-      data=df_map,
-      get_position=["lon", "lat"],
-      get_color=[30, 144, 255, 200],  # 파란색 마커
-      get_radius=1500,
-      pickable=True,
-  )
+  # 영천시 중심 좌표 기준으로 Folium 지도 생성
+  m = folium.Map(location=[36.01, 128.89], zoom_start=10)
 
-  layer_text = pdk.Layer(
-      "TextLayer",
-      data=df_map,
-      get_position=["lon", "lat"],
-      get_text="text",
-      get_size=13,
-      get_color=[20, 20, 20, 255],
-      get_alignment_baseline="'bottom'",
-      get_pixel_offset=[0, -15],
-  )
+  # 각 관측소별 마커 및 팝업/툴팁 설정
+  for name, info in STATION_MAP.items():
+    w_data = weather_results[name]
 
-  # 영천시 중심 기준 뷰 설정 (Mapbox 기본 영어 지명을 보완하기 위해 한글 레이블 오버레이 결합)
-  view_state = pdk.ViewState(
-      latitude=36.01, longitude=128.89, zoom=10.2, pitch=0
-  )
+    # 지도 위에 상시 노출될 텍스트 툴팁 내용
+    tooltip_html = (
+        f"<b>📍 {name} 관측소</b><br>🌡 기온: {w_data['temp']}°C<br>💧 습도:"
+        f" {w_data['humidity']}%<br>🌧 강수: {w_data['rainfall']}mm<br>💨 풍속:"
+        f" {w_data['wind_speed']}m/s"
+    )
 
-  r = pdk.Deck(
-      layers=[layer_scatter, layer_text],
-      initial_view_state=view_state,
-      tooltip={
-          "html": "<b>관측소:</b> {name}<br/><b>상세정보:</b><br/>{text}",
-          "style": {
-              "backgroundColor": "steelblue",
-              "color": "white",
-              "font-family": "sans-serif",
-              "padding": "8px",
-          },
-      },
-  )
-  st.pydeck_chart(r, use_container_width=True)
+    # 지도 마커 추가 (클릭 시 팝업, 마우스 올릴 시 툴팁 표시)
+    folium.Marker(
+        location=[info["lat"], info["lon"]],
+        popup=folium.Popup(tooltip_html, max_width=300),
+        tooltip=f"{name} (기온: {w_data['temp']}°C, 습도: {w_data['humidity']}%)",
+        icon=folium.Icon(color="blue", icon="cloud", prefix="fa"),
+    ).add_to(m)
+
+  # Streamlit 화면에 Folium 지도 출력
+  st_folium(m, width="100%", height=380, key="weather_map")
 
 with right_col:
   # 1. 대기현황 카드
