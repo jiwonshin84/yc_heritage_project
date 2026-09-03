@@ -265,7 +265,7 @@ with map_col:
   )
 
   # 지도를 아래쪽(남쪽)으로 내리기 위해 위도 값을 낮춤 (기존 35.9400 -> 35.8800 등 조정 가능)
-  m = folium.Map(location=[35.9000, 128.8400], zoom_start=10.5)
+  m = folium.Map(location=[35.9300, 128.8400], zoom_start=10.5)
 
   # 상자 크기 (고정값으로 앵커 계산에 사용)
   BOX_W = 170
