@@ -277,7 +277,7 @@ with map_col:
     elif name == "영천(종합)":
       anchor_val = (BOX_W - 140, BOX_H)
     else:  # 청통
-      anchor_val = (40, 10)
+      anchor_val = (80, 10)
 
     label_html = f"""
         <div style="
