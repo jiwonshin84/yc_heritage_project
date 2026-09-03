@@ -273,7 +273,7 @@ with map_col:
     if name == "신녕":
       anchor_val = (0, BOX_H // 2)
     elif name == "화북":
-      anchor_val = (BOX_W - 160, -40)
+      anchor_val = (BOX_W - 180, -40)
     elif name == "영천(종합)":
       anchor_val = (BOX_W - 140, BOX_H)
     else:  # 청통
