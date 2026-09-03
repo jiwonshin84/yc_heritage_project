@@ -252,8 +252,8 @@ with map_col:
       unsafe_allow_html=True,
   )
 
-  # 영천시 중심 좌표 기준, 줌 레벨을 10 -> 11로 한번 더 확대
-  m = folium.Map(location=[36.03, 128.87], zoom_start=11)
+  # 영천시 중심 좌표 기준, 줌 레벨을 10 
+  m = folium.Map(location=[36.03, 128.87], zoom_start=10)
 
   # 각 관측소별 상시 노출될 HTML 박스 아이콘 설정
   for name, info in STATION_MAP.items():
