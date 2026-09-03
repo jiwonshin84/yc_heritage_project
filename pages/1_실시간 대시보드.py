@@ -240,8 +240,6 @@ st.info(
     " 수집 전송 지연에 따라 실측 시각과 차이가 발생할 수 있습니다."
 )
 
-st.divider()
-
 # 카드 스타일 정의
 title_style = (
     "font-size:18px; font-weight:700; margin-bottom:8px; color:#1f2937;"
