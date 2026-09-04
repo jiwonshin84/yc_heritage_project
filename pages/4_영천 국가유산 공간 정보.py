@@ -154,7 +154,7 @@ with st.container(border=True):
         filtered_df = filtered_df[filtered_df["국가유산종목"] == selected_type]
 
     with f_col4:
-        # Streamlit selectbox 기본 라벨 높이와 정확히 일치시키는 가상 텍스트 높이 공간 부여
+        
         st.markdown("""
             <div style="font-size: 14px; font-weight: 400; color: transparent; margin-bottom: 6px; user-select: none;">
                 맞춤 정렬용
