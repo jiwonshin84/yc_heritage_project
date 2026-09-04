@@ -142,7 +142,7 @@ if selected_type != "전체":
     filtered_df = filtered_df[filtered_df["국가유산종목"] == selected_type]
 
 with f_col4:
-  # margin-top을 제거하고 입력창 전체 높이(레이블+입력박스)와 맞춤
+  # 이미지의 부드러운 파란색 카드 톤을 반영한 스타일 적용
   st.markdown(f"""
     <div style="
         margin-top: 0px;
@@ -151,12 +151,12 @@ with f_col4:
         flex-direction: column;
         justify-content: center;
         align-items: center;
-        background-color: #f0f4f8;
-        border: 1px solid #d9e2ec;
-        border-radius: 6px;
+        background-color: #eaf2fb;
+        border: 1px solid #cce0f6;
+        border-radius: 8px;
     ">
-        <span style="font-size: 13px; color: #486581; font-weight: 600; line-height: 1.2;">검색 결과</span>
-        <span style="font-size: 18px; color: #102a43; font-weight: bold; line-height: 1.3;">{len(filtered_df)} 건</span>
+        <span style="font-size: 13px; color: #3b71ca; font-weight: 600; line-height: 1.2;">검색 결과</span>
+        <span style="font-size: 18px; color: #1d4ed8; font-weight: bold; line-height: 1.3;">{len(filtered_df)} 건</span>
     </div>
   """, unsafe_allow_html=True)
 
