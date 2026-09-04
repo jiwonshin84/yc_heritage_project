@@ -101,9 +101,6 @@ def load_data():
 df = load_data()
 
 
-# =================================================
-# [수정] 검색 결과 박스와 동일한 카드 색상/테두리로 필터 영역 감싸기
-# =================================================
 st.markdown("""
 <style>
 div[data-testid="stVerticalBlockBorderWrapper"] {
@@ -158,21 +155,10 @@ with st.container(border=True):
 
     with f_col4:
         st.markdown(f"""
-            <div style="
-                margin-top: 28px;
-                height: 48px;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                align-items: center;
-                background-color: #ffffff;
-                border: 1px solid #b8d4fc;
-                border-radius: 8px;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            ">
-                <span style="font-size: 15px; font-weight: 600; line-height: 1.1;">검색 결과</span>
-                <span style="font-size: 20px; color: #1d4ed8; font-weight: bold; line-height: 1.2;">{len(filtered_df)} 건</span>
-            </div>
+            
+            <span style="font-size: 15px; color: #1d4ed8; font-weight: 600; line-height: 1.1;">검색 결과</span>
+            <span style="font-size: 20px; color: #1d4ed8; font-weight: bold; line-height: 1.2;">{len(filtered_df)} 건</span>
+            
         """, unsafe_allow_html=True)
 
 
