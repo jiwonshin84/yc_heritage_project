@@ -172,7 +172,7 @@ with st.container(border=True):
                 border-radius: 8px;
                 box-shadow: 0 1px 3px rgba(0,0,0,0.05);
             ">
-                <span style="font-size: 13px; color: #1d4ed8; font-weight: bold;">{len(filtered_df)} 건</span>
+                <span style="font-size: 15px; color: #1d4ed8; font-weight: bold;">{len(filtered_df)} 건</span>
             </div>
         """, unsafe_allow_html=True)
 
