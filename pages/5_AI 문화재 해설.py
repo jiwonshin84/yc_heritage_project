@@ -120,7 +120,7 @@ try:
     # [최상단 헤더 행] 수직 일직선 정렬
     # -----------------------------------------------------
     header_col1, header_col2, header_col3 = st.columns(
-        [1.3, 1.0, 1.7], gap="medium", vertical_alignment="center"
+        [1.3, 0.7, 1.9], gap="medium", vertical_alignment="center"
     )
 
     with header_col1:
