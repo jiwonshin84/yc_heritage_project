@@ -14,6 +14,16 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# 제목과 안내 문구는 박스 밖 원래 자리로 복원
+st.markdown("""
+<h1 style="font-size:34px; margin-bottom:5px;">
+🏛️ 영천 국가유산 공간 정보
+</h1>
+<div style="font-size:17px; color:#6b7280; margin-bottom:20px;">
+영천 국가유산을 검색해보세요
+</div>
+""", unsafe_allow_html=True)
+
 
 # =================================================
 # 데이터 로드 및 전처리 (캐싱 적용)
@@ -92,32 +102,22 @@ df = load_data()
 
 
 # =================================================
-# [수정] Streamlit 내장 컨테이너와 커스텀 CSS로 파란 박스 구현
+# [수정] 검색 결과 박스와 동일한 카드 색상/테두리로 필터 영역 감싸기
 # =================================================
 st.markdown("""
 <style>
-/* Streamlit 기본 컨테이너(border=True)의 스타일을 은은한 파란색 톤으로 커스텀 */
 div[data-testid="stVerticalBlockBorderWrapper"] {
-    background-color: #f0f6fc;
-    border: 1px solid #d0e1fd !important;
+    background-color: #ffffff;
+    border: 1px solid #b8d4fc !important;
     border-radius: 12px;
     padding: 10px 10px;
     margin-bottom: 25px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 </style>
 """, unsafe_allow_html=True)
 
-# 컨테이너 내부에 제목, 필터, 결과 카드가 모두 깔끔하게 포함됩니다.
 with st.container(border=True):
-    st.markdown("""
-        <h1 style="font-size:32px; margin-top:5px; margin-bottom:0px; color:#1e3a8a;">
-            🏛️ 영천 국가유산 공간 정보
-        </h1>
-        <div style="font-size:15px; color:#4b5563; margin-bottom:15px;">
-            영천 국가유산을 검색해보세요
-        </div>
-    """, unsafe_allow_html=True)
-
     f_col1, f_col2, f_col3, f_col4 = st.columns([2, 1.5, 1.5, 1])
 
     with f_col1:
