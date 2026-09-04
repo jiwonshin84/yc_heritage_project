@@ -71,28 +71,145 @@ def clean(val):
 try:
     df = load_data()
 
-    # [최상단 제목 및 AI 도슨트/질문 기능 가로 배치]
-    title_col, docent_btn_col, q_input_col, q_btn_col = st.columns(
-        [1.8, 1.1, 1.5, 0.7], gap="medium"
+    # -----------------------------------------------------
+    # [최상단 헤더 행] 제목 | AI 도슨트 버튼 | 질문 입력창 & 전송 버튼
+    # -----------------------------------------------------
+    header_col1, header_col2, header_col3 = st.columns(
+        [1.3, 1.0, 1.7], gap="medium"
     )
 
-    with title_col:
+    with header_col1:
         st.markdown(
-            "<h1 style='margin: 0; font-size: 28px;'>🤖 AI 문화재 해설 가이드</h1>",
+            "<h2 style='margin: 0; padding-top: 5px; color: #2c3e50;'>🤖 AI"
+            " 문화재 해설 가이드</h2>",
             unsafe_allow_html=True,
         )
 
-    with docent_btn_col:
-        # 버튼을 제목 세로 높이에 맞추기 위한 상단 마크다운 여백
+    with header_col2:
+        # 버튼 위 여백을 주어 타이틀 수직 중앙과 맞춤
         st.markdown(
-            "<div style='height: 4px;'></div>", unsafe_allow_html=True
+            "<div style='height: 2px;'></div>", unsafe_allow_html=True
         )
-        if st.button("✨ 도슨트 해설 생성", use_container_width=True):
-            # heritage 변수가 아래에서 정의되므로 현재 선택된 값 가져오기 위한 처리 필요
-            pass  # 아래 필터 로직 이후에 처리되거나 세션에 저장된 값을 활용
+        docent_clicked = st.button(
+            "✨ AI 도슨트 해설 생성", use_container_width=True
+        )
 
-    # (주의: 실제 선택된 heritage 값을 쓰기 위해 필터 선행 처리 필요하므로 구조상 아래로 분리하거나 위에서 먼저 가져와야 합니다)
-    # 아래에서 안전하게 처리되도록 구조를 정돈했습니다.
+    with header_col3:
+        # 질문 입력창과 전송 버튼을 가로로 배치하기 위한 내부 분할
+        q_in_col, q_btn_col = st.columns([3, 1], gap="small")
+        with q_in_col:
+            user_q = st.text_input(
+                "질문하기",
+                placeholder="궁금한 점을 입력하세요",
+                label_visibility="collapsed",
+            )
+        with q_btn_col:
+            question_clicked = st.button("질문 전송", use_container_width=True)
+
+    st.markdown("---")
+
+    # [문화재 선택 필터]
+    category_col = "종목" if "종목" in df.columns else "국가유산종목"
+    col_sel1, col_sel2 = st.columns(2)
+
+    with col_sel1:
+        category = st.selectbox(
+            "📂 문화재 품목 선택", sorted(df[category_col].dropna().unique())
+        )
+
+    filtered_df = df[df[category_col] == category]
+
+    with col_sel2:
+        heritage = st.selectbox("🏛 문화재 선택", filtered_df["문화재명(국문)"])
+
+    if st.session_state.last_heritage != heritage:
+        st.session_state.docent_explanation = ""
+        st.session_state.ai_answer = ""
+        st.session_state.last_heritage = heritage
+        st.session_state.should_speak = False
+
+    row = filtered_df[filtered_df["문화재명(국문)"] == heritage].iloc[0]
+
+    # [상단 타이틀 배너]
+    st.markdown(f"""
+        <div style="background-color:#f8f9fa; padding:20px; border-radius:15px; text-align:center; margin-top:15px; margin-bottom:25px; border:1px solid #e9ecef;">
+            <h1 style="margin:0; color:#2c3e50; font-size:32px;">🏛 {heritage}</h1>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # [AI 기능 동작 처리 (도슨트 생성 버튼 클릭 시)]
+    if docent_clicked:
+        with st.spinner("AI 해설사가 원고를 작성하고 음성을 준비 중입니다..."):
+            prompt = (
+                f"당신은 영천 문화재 도슨트입니다. '{heritage}'를 역사적 배경과"
+                " 특징을 중심으로 친절하게 설명해주세요. 3~4문장 정도로 핵심만"
+                f" 말해주세요. 자료: {clean(row.get('내용'))}"
+            )
+            response = model.generate_content(prompt)
+            st.session_state.docent_explanation = response.text
+            st.session_state.should_speak = True
+
+    # [AI 기능 동작 처리 (질문 전송 버튼 클릭 시)]
+    if question_clicked:
+        if user_q:
+            with st.spinner("답변 생성 중..."):
+                res = model.generate_content(
+                    f"{heritage} 질문: {user_q}\n내용:"
+                    f" {clean(row.get('내용'))}"
+                )
+                st.session_state.ai_answer = res.text
+        else:
+            st.warning("질문을 입력해주세요.")
+
+    # [AI 결과 출력 영역 (도슨트 해설 및 질문 답변)]
+    if st.session_state.docent_explanation or st.session_state.ai_answer:
+        res_col1, res_col2 = st.columns(2, gap="medium")
+        with res_col1:
+            if st.session_state.docent_explanation:
+                st.info(st.session_state.docent_explanation)
+                if st.session_state.should_speak:
+                    speak_text(st.session_state.docent_explanation)
+                    st.session_state.should_speak = False
+        with res_col2:
+            if st.session_state.ai_answer:
+                st.success(st.session_state.ai_answer)
+        st.markdown("<br>", unsafe_allow_html=True)
+
+    # [좌우 분할 콘텐츠]
+    left_col, right_col = st.columns([1, 1.2], gap="large")
+
+    with left_col:
+        image_url = row.get("이미지URL")
+        if pd.notna(image_url) and str(image_url).strip() != "":
+            st.image(image_url, use_container_width=True)
+            st.caption(f"출처: 국가유산청 - {heritage}")
+        else:
+            st.info("🖼 등록된 이미지가 없습니다.")
+
+    with right_col:
+        st.markdown(
+            "<h3 style='margin-top:0; color:#2c3e50;'>📋 상세 정보</h3>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(f"""
+            <style>
+                .info-table {{ width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #f0f0f0; }}
+                .info-tr {{ border-bottom: 1px solid #eeeeee; }}
+                .info-key {{ width: 25%; padding: 12px 10px; font-weight: bold; color: #34495e; background-color: #f8f9fa; font-size: 15px; }}
+                .info-val {{ width: 75%; padding: 12px 15px; color: #2c3e50; font-size: 15px; line-height: 1.5; }}
+            </style>
+            <table class="info-table">
+                <tr class="info-tr"><td class="info-key">종목</td><td class="info-val">{clean(row.get(category_col))}</td></tr>
+                <tr class="info-tr"><td class="info-key">분류</td><td class="info-val">{clean(row.get('국가유산분류'))} ({clean(row.get('국가유산분류2'))})</td></tr>
+                <tr class="info-tr"><td class="info-key">한자명</td><td class="info-val">{clean(row.get('문화재명(한자)'))}</td></tr>
+                <tr class="info-tr"><td class="info-key">시대</td><td class="info-val">{clean(row.get('시대'))}</td></tr>
+                <tr class="info-tr"><td class="info-key">소재지</td><td class="info-val">{clean(row.get('소재지상세'))}</td></tr>
+                <tr class="info-tr"><td class="info-key">소유/관리</td><td class="info-val">{clean(row.get('소유자'))} / {clean(row.get('관리자'))}</td></tr>
+            </table>
+        """, unsafe_allow_html=True)
+
+        with st.expander("📖 원문 설명 보기", expanded=True):
+            st.write(clean(row.get("내용")))
 
 except Exception as e:
-    pass
+    st.error(f"오류가 발생했습니다: {e}")
