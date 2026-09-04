@@ -1,4 +1,5 @@
 from datetime import datetime
+import os
 import time
 import pandas as pd
 import plotly.express as px
@@ -140,6 +141,19 @@ def collect_and_process_data(status_container, progress_bar):
     df["year"] = df["date"].dt.year
     df["season"] = df["month"].apply(get_season)
 
+    # ------------------------------------------------------------
+    # 📂 [자동 저장 기능] data/processed 폴더 안에 CSV 파일 저장
+    # ------------------------------------------------------------
+    save_dir = "data/processed"
+    os.makedirs(save_dir, exist_ok=True)  # 폴더가 없으면 자동 생성
+    
+    file_path = os.path.join(save_dir, file_name)
+    df.to_csv(file_path, index=False, encoding="utf-8-sig")
+    
+    # 우측 하단에 성공 토스트 메시지 표시
+    st.toast(f"💾 데이터가 [{file_path}] 경로에 자동 저장되었습니다!", icon="📂")
+    # ------------------------------------------------------------
+
     progress_bar.progress(1.0)
     status_container.update(label="✅ 학습 데이터 구축 및 전처리 완료!", state="complete", expanded=False)
 
@@ -185,7 +199,7 @@ if df is not None:
     )
 
     # ------------------------------------------------------------
-    # 3-1. [적용 2] 데이터 전처리 및 품질 요약 (Data Cleansing Report)
+    # 3-1. 데이터 전처리 및 품질 요약 (Data Cleansing Report)
     # ------------------------------------------------------------
     st.markdown("---")
     with st.expander("🔍 데이터 전처리 및 품질 리포트 확인하기", expanded=False):
@@ -218,7 +232,6 @@ if df is not None:
     st.markdown("---")
     st.subheader("📈 계절별 기상 및 미세먼지 종합 분석")
 
-    # [Row 1] 계절별 기온/습도 현황 & 연도별 계절 기온 변화 추이
     row1_col1, row1_col2 = st.columns(2)
 
     with row1_col1:
@@ -285,7 +298,6 @@ if df is not None:
         )
         st.plotly_chart(fig_season_trend, use_container_width=True)
 
-    # [Row 2] 계절별 미세먼지 농도 & 계절별 강수량/일사량 분석
     row2_col1, row2_col2 = st.columns(2)
 
     with row2_col1:
