@@ -26,6 +26,10 @@ else:
 # =====================================================
 if "last_heritage" not in st.session_state:
     st.session_state.last_heritage = ""
+if "open_docent" not in st.session_state:
+    st.session_state.open_docent = False
+if "open_qa" not in st.session_state:
+    st.session_state.open_qa = False
 
 
 # =====================================================
@@ -46,37 +50,49 @@ def speak_text(text):
 
 
 # =====================================================
-# 4. 팝업(Dialog) 내부에서 로딩과 결과 출력을 함께 처리하는 함수
+# 4. 팝업(Dialog) 함수 정의 (캐시 적용으로 재호출 방지)
 # =====================================================
 @st.dialog("✨ AI 도슨트 해설", width="large")
 def show_docent_dialog(heritage, content_text):
-    with st.spinner("AI 해설사가 원고를 작성하고 음성을 준비 중입니다..."):
-        prompt = (
-            f"당신은 영천 문화재 도슨트입니다. '{heritage}'를 역사적 배경과"
-            " 특징을 중심으로 친절하게 설명해주세요. 3~4문장 정도로 핵심만"
-            f" 말해주세요. 자료: {content_text}"
-        )
-        response = model.generate_content(prompt)
-        explanation = response.text
+    # 이미 생성된 결과가 없을 때만 API 호출
+    if "docent_cache" not in st.session_state:
+        with st.spinner("AI 해설사가 원고를 작성하고 음성을 준비 중입니다..."):
+            prompt = (
+                f"당신은 영천 문화재 도슨트입니다. '{heritage}'를 역사적 배경과"
+                " 특징을 중심으로 친절하게 설명해주세요. 3~4문장 정도로 핵심만"
+                f" 말해주세요. 자료: {content_text}"
+            )
+            response = model.generate_content(prompt)
+            st.session_state.docent_cache = response.text
 
-    st.info(explanation)
-    speak_text(explanation)
+    st.info(st.session_state.docent_cache)
+    speak_text(st.session_state.docent_cache)
 
+    # 확인 버튼 클릭 시 캐시를 지우고 팝업 플래그를 꺼서 창을 닫음
     if st.button("확인", use_container_width=True):
+        if "docent_cache" in st.session_state:
+            del st.session_state.docent_cache
+        st.session_state.open_docent = False
         st.rerun()
 
 
 @st.dialog("💬 AI 질문 답변", width="large")
 def show_qa_dialog(heritage, user_q, content_text):
-    with st.spinner("답변 생성 중..."):
-        res = model.generate_content(
-            f"{heritage} 질문: {user_q}\n내용: {content_text}"
-        )
-        answer = res.text
+    # 이미 생성된 결과가 없을 때만 API 호출
+    if "qa_cache" not in st.session_state:
+        with st.spinner("답변 생성 중..."):
+            res = model.generate_content(
+                f"{heritage} 질문: {user_q}\n내용: {content_text}"
+            )
+            st.session_state.qa_cache = res.text
 
-    st.success(answer)
+    st.success(st.session_state.qa_cache)
 
+    # 확인 버튼 클릭 시 캐시를 지우고 팝업 플래그를 꺼서 창을 닫음
     if st.button("확인", use_container_width=True):
+        if "qa_cache" in st.session_state:
+            del st.session_state.qa_cache
+        st.session_state.open_qa = False
         st.rerun()
 
 
@@ -147,19 +163,33 @@ try:
 
     if st.session_state.last_heritage != heritage:
         st.session_state.last_heritage = heritage
+        # 문화재가 바뀌면 이전 캐시도 초기화
+        if "docent_cache" in st.session_state:
+            del st.session_state.docent_cache
+        if "qa_cache" in st.session_state:
+            del st.session_state.qa_cache
 
     row = filtered_df[filtered_df["문화재명(국문)"] == heritage].iloc[0]
     content_text = clean(row.get("내용"))
 
-    # [버튼 클릭 시 팝업 호출 (팝업 내부에서 로딩 및 결과 처리 수행)]
+    # [버튼 클릭 시 팝업 열기 상태 활성화]
     if docent_clicked:
-        show_docent_dialog(heritage, content_text)
+        st.session_state.open_docent = True
 
     if question_clicked:
         if user_q:
-            show_qa_dialog(heritage, user_q, content_text)
+            st.session_state.open_qa = True
+            st.session_state.current_user_q = user_q
         else:
             st.warning("질문을 입력해주세요.")
+
+    # [상태에 따라 팝업창 호출]
+    if st.session_state.open_docent:
+        show_docent_dialog(heritage, content_text)
+
+    if st.session_state.open_qa:
+        user_q_val = st.session_state.get("current_user_q", "")
+        show_qa_dialog(heritage, user_q_val, content_text)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
