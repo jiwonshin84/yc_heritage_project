@@ -102,9 +102,9 @@ try:
 
     st.markdown("---")
 
-    # [문화재 선택 필터]
+    # [문화재 선택 필터] (1:1 비율로 콤보박스 배치)
     category_col = "종목" if "종목" in df.columns else "국가유산종목"
-    col_sel1, col_sel2 = st.columns(2)
+    col_sel1, col_sel2 = st.columns(2, gap="medium")
 
     with col_sel1:
         category = st.selectbox(
@@ -162,8 +162,8 @@ try:
                 st.success(st.session_state.ai_answer)
         st.markdown("<br>", unsafe_allow_html=True)
 
-    # [좌우 분할 콘텐츠]
-    left_col, right_col = st.columns([1, 1.2], gap="large")
+    # [좌우 분할 콘텐츠 - 콤보박스와 동일한 1:1 비율로 세로 라인 일치화]
+    left_col, right_col = st.columns(2, gap="medium")
 
     with left_col:
         image_url = row.get("이미지URL")
@@ -174,7 +174,6 @@ try:
             st.info("🖼 등록된 이미지가 없습니다.")
 
     with right_col:
-        # '상세 정보' 제목에 문화재 이름이 함께 나오도록 수정
         st.markdown(
             f"<h3 style='margin-top:0; color:#2c3e50;'>📋 {heritage} 상세 정보</h3>",
             unsafe_allow_html=True,
