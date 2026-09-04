@@ -11,3 +11,5 @@ seaborn
 requests
 streamlit-autorefresh
 
+PyGithub
+
