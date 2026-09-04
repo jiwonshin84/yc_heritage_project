@@ -116,9 +116,6 @@ def clean(val):
 try:
     df = load_data()
 
-    # -----------------------------------------------------
-    # [최상단 헤더 행] 수직 일직선 정렬
-    # -----------------------------------------------------
     header_col1, header_col2, header_col3 = st.columns(
         [1.3, 0.6, 2.0], gap="medium", vertical_alignment="center"
     )
@@ -147,7 +144,6 @@ try:
 
     st.markdown("---")
 
-    # [문화재 선택 필터] (1:1 비율로 콤보박스 배치)
     category_col = "종목" if "종목" in df.columns else "국가유산종목"
     col_sel1, col_sel2 = st.columns(2, gap="medium")
 
@@ -172,7 +168,6 @@ try:
     row = filtered_df[filtered_df["문화재명(국문)"] == heritage].iloc[0]
     content_text = clean(row.get("내용"))
 
-    # [버튼 클릭 시 팝업 열기 상태 활성화]
     if docent_clicked:
         st.session_state.open_docent = True
 
@@ -183,7 +178,6 @@ try:
         else:
             st.warning("질문을 입력해주세요.")
 
-    # [상태에 따라 팝업창 호출]
     if st.session_state.open_docent:
         show_docent_dialog(heritage, content_text)
 
@@ -193,7 +187,6 @@ try:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # [좌우 분할 콘텐츠 - 콤보박스와 동일한 1:1 비율로 세로 라인 일치화]
     left_col, right_col = st.columns(2, gap="medium")
 
     with left_col:
