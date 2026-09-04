@@ -154,23 +154,27 @@ with st.container(border=True):
         filtered_df = filtered_df[filtered_df["국가유산종목"] == selected_type]
 
     with f_col4:
-            st.markdown(f"""
-                <div style="
-                    margin-top: 28px;
-                    height: 48px;
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: center;
-                    align-items: center;
-                    background-color: #ffffff;
-                    border: 1px solid #b8d4fc;
-                    border-radius: 8px;
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-                ">
-                    <span style="font-size: 14px; color: #3b71ca; font-weight: 600; margin-bottom: 2px;">검색 결과</span>
-                    <span style="font-size: 18px; color: #1d4ed8; font-weight: bold;">{len(filtered_df)} 건</span>
-                </div>
-            """, unsafe_allow_html=True)
+        # Streamlit selectbox 기본 라벨 높이와 정확히 일치시키는 가상 텍스트 높이 공간 부여
+        st.markdown("""
+            <div style="font-size: 14px; font-weight: 400; color: transparent; margin-bottom: 6px; user-select: none;">
+                맞춤 정렬용
+            </div>
+        """, unsafe_allow_html=True)
+        st.markdown(f"""
+            <div style="
+                height: 40px;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                background-color: #ffffff;
+                border: 1px solid #b8d4fc;
+                border-radius: 8px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            ">
+                <span style="font-size: 13px; color: #1d4ed8; font-weight: bold;">{len(filtered_df)} 건</span>
+            </div>
+        """, unsafe_allow_html=True)
 
 
 if filtered_df.empty:
