@@ -142,7 +142,7 @@ if selected_type != "전체":
   filtered_df = filtered_df[filtered_df["국가유산종목"] == selected_type]
 
 with f_col4:
-  st.markdown("<br>", unsafe_allow_html=True)  # 줄맞춤용
+  #st.markdown("<br>", unsafe_allow_html=True)  # 줄맞춤용
   st.metric("검색 결과", f"{len(filtered_df)} 건")
 
 if filtered_df.empty:
