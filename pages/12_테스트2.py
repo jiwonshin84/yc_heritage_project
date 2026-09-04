@@ -1,22 +1,17 @@
 import streamlit as st
 import pandas as pd
 import requests
-import os
 import urllib.parse
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, accuracy_score
 
 # ==========================================================
 # 0. 설정
 # ==========================================================
 
 st.set_page_config(
-    page_title="영천 지역 문화재 훼손 위험 예측",
-    page_icon="🏛",
+    page_title="영천 지역 기상 및 대기환경 모니터링",
+    page_icon="🌤",
     layout="wide"
 )
 
@@ -24,280 +19,15 @@ SERVICE_KEY = st.secrets.get("SERVICE_KEY", "feb2bfabd299d5d05e89c7aec49ba7e7061
 
 now = datetime.now(ZoneInfo("Asia/Seoul"))
 
-# 최신 예측용: 최근 7일 범위에서 공공데이터 조회
+# 최근 7일 범위 설정 (어제까지)
 end_date_dt = now - timedelta(days=1)
 start_date_dt = now - timedelta(days=7)
 
 end_date = end_date_dt.strftime("%Y%m%d")
 start_date = start_date_dt.strftime("%Y%m%d")
 
-if "danger_count" not in st.session_state:
-    st.session_state["danger_count"] = 0
-
 # ==========================================================
-# 1. 파생변수 생성
-# ==========================================================
-
-def add_derived_features(df):
-    df = df.copy()
-    df["date"] = pd.to_datetime(df["date"])
-    df = df.sort_values("date").reset_index(drop=True)
-
-    df["temp_change"] = df["temp"].diff().fillna(0)
-    df["humidity_change"] = df["humidity"].diff().fillna(0)
-
-    df["dew_point"] = df["temp"] - ((100 - df["humidity"]) / 5)
-    df["dew_gap"] = df["temp"] - df["dew_point"]
-
-    df["humidity_ma3"] = df["humidity"].rolling(3).mean().fillna(df["humidity"])
-    df["pm10_ma3"] = df["pm10"].rolling(3).mean().fillna(df["pm10"])
-
-    df["temp_std"] = df["temp"].rolling(3).std().fillna(0)
-    df["humidity_std"] = df["humidity"].rolling(3).std().fillna(0)
-
-    df["mold_risk"] = (
-        (df["humidity"] >= 75)
-        .rolling(3)
-        .sum()
-        .fillna(0) >= 2
-    ).astype(int)
-
-    df["pm_load"] = (
-        df["pm10"] + df["pm25"]
-    ).rolling(3).sum().fillna(0)
-
-    return df
-
-# ==========================================================
-# 2. 위험도 규칙 함수
-# ==========================================================
-
-def classify_humidity(h):
-    if h >= 75 or h < 35:
-        return 2
-    elif h >= 65 or h < 45:
-        return 1
-    else:
-        return 0
-
-
-def classify_temp(t):
-    if t > 30 or t < 5:
-        return 2
-    elif t > 25 or t < 15:
-        return 1
-    else:
-        return 0
-
-
-def classify_dew(d):
-    if d < 2:
-        return 2
-    elif d < 5:
-        return 1
-    else:
-        return 0
-
-
-def classify_pm10(p):
-    if p >= 80:
-        return 2
-    elif p >= 30:
-        return 1
-    else:
-        return 0
-
-
-def classify_temp_change(tc):
-    if abs(tc) >= 10:
-        return 2
-    elif abs(tc) >= 5:
-        return 1
-    else:
-        return 0
-
-
-def classify_humidity_change(hc):
-    if abs(hc) >= 30:
-        return 2
-    elif abs(hc) >= 15:
-        return 1
-    else:
-        return 0
-
-
-def calc_weighted_risk(row):
-    return (
-        classify_humidity(row["humidity"]) * 0.30
-        + classify_temp(row["temp"]) * 0.20
-        + classify_dew(row["dew_gap"]) * 0.20
-        + classify_pm10(row["pm10"]) * 0.15
-        + classify_temp_change(row["temp_change"]) * 0.10
-        + classify_humidity_change(row["humidity_change"]) * 0.05
-    )
-
-
-def final_classify(score):
-    if score >= 1.2:
-        return 2
-    elif score >= 0.5:
-        return 1
-    else:
-        return 0
-
-
-def exposure_multiplier(exp):
-    return {
-        "실외": 1.0,
-        "반실외": 0.7,
-        "실내": 0.3
-    }.get(exp, 1.0)
-
-
-def material_extra_risk(mat, row):
-    extra = 0.0
-    dew = row.get("dew_gap", 5.0)
-    hum = row.get("humidity", 50.0)
-    rain = row.get("rainfall", 0.0)
-
-    if mat == "목조":
-        if hum > 75 or hum < 35:
-            extra += 0.3
-        if dew < 2:
-            extra += 0.3
-    elif mat == "석조":
-        if rain > 15:
-            extra += 0.3
-        if dew < 5:
-            extra += 0.2
-    elif mat == "금속":
-        if hum > 70:
-            extra += 0.2
-        if dew < 3:
-            extra += 0.2
-    elif mat == "벽화":
-        if hum > 70 or hum < 40:
-            extra += 0.4
-        if dew < 3:
-            extra += 0.4
-
-    return extra
-
-# ==========================================================
-# 3. 모델 학습
-# ==========================================================
-
-FEATURES = [
-    "temp", "humidity", "rainfall", "wind",
-    "pm10", "pm25", "so2", "no2", "co", "o3",
-    "temp_change", "humidity_change",
-    "dew_gap", "humidity_ma3", "pm10_ma3",
-    "temp_std", "humidity_std", "pm_load",
-    "mat_code", "exp_code"
-]
-
-
-@st.cache_resource
-def train_heritage_model():
-    weather_path = "data/processed/[2016_2025] yeongcheon_weather_daily.csv"
-    air_path = "data/processed/[2019_2025] air_quality.csv"
-
-    if not os.path.exists(weather_path) or not os.path.exists(air_path):
-        return None, None, None, None, None, "학습용 데이터 파일이 존재하지 않습니다."
-
-    w_df = pd.read_csv(weather_path)
-    a_df = pd.read_csv(air_path)
-
-    w_df = w_df.rename(
-        columns={
-            "avg_temperature_c": "temp",
-            "daily_precipitation_mm": "rainfall",
-            "avg_wind_speed_ms": "wind",
-            "avg_relative_humidity_pct": "humidity"
-        }
-    )
-
-    w_df["date"] = pd.to_datetime(w_df["date"])
-    a_df["date"] = pd.to_datetime(a_df["date"])
-
-    m_df = pd.merge(w_df, a_df, on="date", how="inner").ffill()
-    m_df = add_derived_features(m_df)
-
-    mats = {"목조": 0, "석조": 1, "금속": 2, "벽화": 3, "기타": 4}
-    exps = {"실외": 0, "실내": 1, "반실외": 2}
-
-    train_rows = []
-    for _, r in m_df.tail(1200).iterrows():
-        base_score = calc_weighted_risk(r)
-        for m_name, m_code in mats.items():
-            for e_name, e_code in exps.items():
-                adj = exposure_multiplier(e_name)
-                extra = material_extra_risk(m_name, r)
-                score = min(base_score * adj + extra, 2.0)
-                target = final_classify(score)
-
-                train_rows.append({
-                    "temp": r.get("temp", 0),
-                    "humidity": r.get("humidity", 0),
-                    "rainfall": r.get("rainfall", 0),
-                    "wind": r.get("wind", 0),
-                    "pm10": r.get("pm10", 0),
-                    "pm25": r.get("pm25", 0),
-                    "so2": r.get("so2", 0),
-                    "no2": r.get("no2", 0),
-                    "co": r.get("co", 0),
-                    "o3": r.get("o3", 0),
-                    "temp_change": r.get("temp_change", 0),
-                    "humidity_change": r.get("humidity_change", 0),
-                    "dew_gap": r.get("dew_gap", 0),
-                    "humidity_ma3": r.get("humidity_ma3", 0),
-                    "pm10_ma3": r.get("pm10_ma3", 0),
-                    "temp_std": r.get("temp_std", 0),
-                    "humidity_std": r.get("humidity_std", 0),
-                    "pm_load": r.get("pm_load", 0),
-                    "mat_code": m_code,
-                    "exp_code": e_code,
-                    "target": target
-                })
-
-    tdf = pd.DataFrame(train_rows).fillna(0)
-    X = tdf[FEATURES]
-    y = tdf["target"]
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
-
-    model = RandomForestClassifier(
-        n_estimators=200, class_weight="balanced", random_state=42
-    )
-    model.fit(X_train, y_train)
-
-    pred = model.predict(X_test)
-    accuracy = accuracy_score(y_test, pred)
-
-    report_dict = classification_report(
-        y_test, pred, labels=[0, 1, 2], target_names=["안전", "주의", "위험"],
-        output_dict=True, zero_division=0
-    )
-    report_df = pd.DataFrame(report_dict).transpose()
-
-    importance_df = pd.DataFrame({
-        "변수": FEATURES,
-        "중요도": model.feature_importances_
-    }).sort_values("중요도", ascending=False)
-
-    return model, FEATURES, report_df, importance_df, accuracy, None
-
-
-ai_model, feature_names, report_df, importance_df, accuracy, model_error = train_heritage_model()
-
-if model_error:
-    st.error(model_error)
-    st.stop()
-
-# ==========================================================
-# 4. 최신 공공데이터 수집 (ASOS 기상 + 실시간 대기오염)
+# 1. 기상 데이터 수집 (ASOS - 영천 281)
 # ==========================================================
 
 weather_list = []
@@ -333,16 +63,19 @@ try:
 except Exception as e:
     st.warning(f"기상 데이터 수집 실패: {e}")
 
+# ==========================================================
+# 2. 대기오염 데이터 수집 (실시간 측정정보 API)
+# ==========================================================
+
 air_list = []
 try:
-    # 💡 [변경] 확정 통계 API 대신 '측정소별 실시간 측정정보 조회 API' 사용
     air_url = "http://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmDnsty"
     safe_service_key = urllib.parse.unquote(SERVICE_KEY)
 
     air_params = {
         "serviceKey": safe_service_key,
         "returnType": "json",
-        "numOfRows": "100",  # 최근 시간별 데이터 넉넉히 수집
+        "numOfRows": "100",
         "pageNo": "1",
         "stationName": "영천",
         "dataTerm": "DAILY",
@@ -356,9 +89,9 @@ try:
         items = air_data.get("response", {}).get("body", {}).get("items", [])
 
         for item in items:
-            raw_time = item.get("dataTime", "") # 예: "2026-09-03 14:00"
+            raw_time = item.get("dataTime", "")
             if raw_time:
-                raw_date = raw_time.split(" ")[0] # 날짜만 추출
+                raw_date = raw_time.split(" ")[0]
                 air_list.append({
                     "date": pd.to_datetime(raw_date),
                     "pm10": float(item.get("pm10Value", 0) or 0),
@@ -372,189 +105,66 @@ except Exception as e:
     st.warning(f"대기오염 실시간 데이터 수집 실패: {e}")
 
 # ==========================================================
-# 5. 최신 환경 데이터 구성 및 병합
+# 3. 데이터프레임 병합 및 정제
 # ==========================================================
 
 w_df_curr = pd.DataFrame(weather_list)
 a_df_curr = pd.DataFrame(air_list)
 
 if w_df_curr.empty or a_df_curr.empty:
-    st.error("최신 기상 또는 대기오염 데이터를 불러오지 못했습니다.")
+    st.error("기상 또는 대기오염 데이터를 불러오지 못했습니다. API 키나 네트워크 상태를 확인해주세요.")
     st.stop()
 
 w_df_curr["date"] = pd.to_datetime(w_df_curr["date"])
 a_df_curr["date"] = pd.to_datetime(a_df_curr["date"])
 
-# 💡 실시간 시간별 데이터를 날짜별 평균(Daily Mean)으로 집계
+# 날짜별 평균 집계
 w_df_curr = w_df_curr.sort_values("date").groupby("date", as_index=False).mean(numeric_only=True)
 a_df_curr = a_df_curr.sort_values("date").groupby("date", as_index=False).mean(numeric_only=True)
 
+# 두 데이터 병합
 merged_curr = pd.merge(w_df_curr, a_df_curr, on="date", how="left")
-
-if merged_curr.empty:
-    st.error("기상 데이터와 대기오염 데이터의 날짜가 일치하지 않습니다.")
-    st.stop()
-
 merged_curr = merged_curr.drop_duplicates(subset=["date"], keep="last")
 merged_curr = merged_curr.sort_values("date").reset_index(drop=True)
 
-processed_curr = add_derived_features(merged_curr)
-
-three_days_display = processed_curr.tail(3).copy()
-target_row = processed_curr.iloc[-1]
-
+# 가장 최신 기준일 데이터
+target_row = merged_curr.iloc[-1]
 tm = target_row["date"].strftime("%Y-%m-%d")
 
-curr_raw = {
-    k: target_row[k]
-    for k in ["temp", "humidity", "rainfall", "wind", "pm10", "pm25", "so2", "no2", "co", "o3"]
-}
-
-curr_env = {k: target_row[k] for k in FEATURES[:-2]}
-
-dew_point = curr_raw["temp"] - ((100 - curr_raw["humidity"]) / 5)
-
-curr_weighted_risk = calc_weighted_risk({
-    **curr_raw,
-    "dew_gap": curr_env.get("dew_gap", 5.0),
-    "temp_change": curr_env.get("temp_change", 0.0),
-    "humidity_change": curr_env.get("humidity_change", 0.0)
-})
-
-curr_risk_grade = final_classify(curr_weighted_risk)
-
 # ==========================================================
-# 6. 문화재별 예측
+# 4. 화면 UI 구성
 # ==========================================================
 
-heritage_path = "data/processed/yc_heritage_feature.csv"
-if os.path.exists(heritage_path):
-    heritage_df = pd.read_csv(heritage_path)
-else:
-    st.error("문화재 특성 데이터 파일을 찾을 수 없습니다.")
-    st.stop()
-
-res_df = pd.DataFrame()
-mat_map = {"목조": 0, "석조": 1, "금속": 2, "벽화": 3}
-exp_map = {"실외": 0, "실내": 1, "반실외": 2}
-
-def get_class_probability(model, prob_array, class_label):
-    if class_label in model.classes_:
-        idx = list(model.classes_).index(class_label)
-        return prob_array[idx]
-    return 0
-
-if ai_model is not None:
-    results = []
-    for _, row in heritage_df.iterrows():
-        mat = str(row["재질"]).strip()
-        exp = str(row["노출형태"]).strip()
-
-        m_code = mat_map.get(mat, 4)
-        e_code = exp_map.get(exp, 0)
-
-        input_v = pd.DataFrame([{
-            **curr_env,
-            "mat_code": m_code,
-            "exp_code": e_code
-        }])
-
-        pred = ai_model.predict(input_v[feature_names])[0]
-        prob = ai_model.predict_proba(input_v[feature_names])[0]
-
-        adj = exposure_multiplier(exp)
-        extra = material_extra_risk(mat, curr_env)
-        adj_score = min(curr_weighted_risk * adj + extra, 2.0)
-
-        danger_prob = get_class_probability(ai_model, prob, 2)
-        danger_pct = round(min(danger_prob * 100 + extra * 15, 100), 1)
-
-        results.append({
-            "문화재명": row["문화재명(국문)"],
-            "재질": mat,
-            "노출": exp,
-            "위험지수": round(adj_score, 3),
-            "위험수치": danger_pct,
-            "등급": pred
-        })
-
-    res_df = pd.DataFrame(results)
-
-cnt_safe = len(res_df[res_df["등급"] == 0])
-cnt_warn = len(res_df[res_df["등급"] == 1])
-cnt_dang = len(res_df[res_df["등급"] == 2])
-st.session_state["danger_count"] = cnt_dang
-
-# ==========================================================
-# 7. 화면 구성
-# ==========================================================
-
-st.title("🏛 공공 환경 데이터 기반 영천 지역 문화재 훼손 위험 예측")
-st.caption(f"기준일자: {tm}")
+st.title("🌤 영천 지역 기상 및 대기환경 모니터링")
+st.caption(f"조회 기준일자: {tm} (최근 데이터)")
 st.divider()
 
-col1, col2, col3 = st.columns(3)
+# 최신 지표 요약
+col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("🌦 기상 환경")
-    st.metric("평균기온", f"{curr_raw['temp']:.1f} °C")
-    st.metric("평균습도", f"{curr_raw['humidity']:.1f} %")
-    st.metric("일강수량", f"{curr_raw['rainfall']:.1f} mm")
-    st.metric("평균풍속", f"{curr_raw['wind']:.1f} m/s")
+    st.subheader("🌦 최신 기상 정보 (ASOS)")
+    st.metric("평균기온", f"{target_row.get('temp', 0):.1f} °C")
+    st.metric("평균습도", f"{target_row.get('humidity', 0):.1f} %")
+    st.metric("일강수량", f"{target_row.get('rainfall', 0):.1f} mm")
+    st.metric("평균풍속", f"{target_row.get('wind', 0):.1f} m/s")
 
 with col2:
-    st.subheader("🌫 대기오염 (실시간 집계)")
-    st.metric("PM10", f"{curr_raw['pm10']:.0f}")
-    st.metric("PM2.5", f"{curr_raw['pm25']:.0f}")
-    st.metric("O₃", f"{curr_raw['o3']:.3f}")
-    st.metric("NO₂", f"{curr_raw['no2']:.3f}")
-    st.metric("CO", f"{curr_raw['co']:.1f}")
-    st.metric("SO₂", f"{curr_raw['so2']:.3f}")
+    st.subheader("🌫 최신 대기오염 정보 (실시간)")
+    st.metric("미세먼지 (PM10)", f"{target_row.get('pm10', 0):.0f} ㎍/㎥")
+    st.metric("초미세먼지 (PM2.5)", f"{target_row.get('pm25', 0):.0f} ㎍/㎥")
+    st.metric("오존 (O₃)", f"{target_row.get('o3', 0):.3f} ppm")
+    st.metric("이산화질소 (NO₂)", f"{target_row.get('no2', 0):.3f} ppm")
 
-with col3:
-    grade_kor = {0: "안전", 1: "주의", 2: "위험"}
-    curr_label = grade_kor[curr_risk_grade]
-
-    st.subheader("🏛 문화재 현황")
-    st.metric("분석 문화재 수", f"{len(heritage_df)}개")
-    st.metric("환경 위험지수", f"{curr_weighted_risk:.2f}")
-    st.metric("현재 환경 등급", curr_label)
-    st.metric("고위험 문화재", f"{cnt_dang}개")
-
-# ==========================================================
-# 8 ~ 12. 데이터 및 결과 출력부
-# ==========================================================
 st.divider()
-st.subheader("📅 최근 환경 데이터")
+st.subheader("📅 최근 환경 데이터 목록")
+
+# 날짜 형식 정리용 복사본
+display_df = merged_curr.tail(7).copy()
+display_df["date"] = display_df["date"].dt.strftime("%Y-%m-%d")
+
 st.dataframe(
-    three_days_display[["date", "temp", "humidity", "rainfall", "wind", "pm10", "pm25", "so2", "no2", "co", "o3"]],
+    display_df[["date", "temp", "humidity", "rainfall", "wind", "pm10", "pm25", "o3", "no2", "co", "so2"]],
     use_container_width=True,
     hide_index=True
 )
-
-st.divider()
-st.subheader("📊 문화재별 AI 위험도 예측")
-if not res_df.empty:
-    s1, s2, s3 = st.columns(3)
-    s1.metric("✅ 안전", f"{cnt_safe}건")
-    s2.metric("⚠️ 주의", f"{cnt_warn}건")
-    s3.metric("🚨 위험", f"{cnt_dang}건")
-
-    display_df = res_df.assign(
-        판정=res_df["등급"].map({0: "안전", 1: "주의", 2: "위험"})
-    ).sort_values("위험수치", ascending=False)[["문화재명", "재질", "노출", "위험지수", "위험수치", "판정"]]
-
-    st.dataframe(
-        display_df,
-        column_config={
-            "위험수치": st.column_config.ProgressColumn(
-                "훼손 위험 수치", min_value=0, max_value=100, format="%.1f%%"
-            )
-        },
-        use_container_width=True,
-        hide_index=True
-    )
-else:
-    st.error("문화재별 분석 데이터를 불러오지 못했습니다.")
-
-st.caption("제6회 학생 SW·AI 인재양성 프로젝트 | 선화여고 - 영천 헤리티지 AI 탐구단")
