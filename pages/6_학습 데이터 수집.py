@@ -152,14 +152,23 @@ def collect_and_process_data(status_container, progress_bar):
 if "df_data" not in st.session_state:
     st.session_state.df_data = None
 
-col_btn1, col_btn2 = st.columns([1, 4])
-with col_btn1:
-    collect_clicked = st.button("🚀 데이터 수집 시작")
+# 버튼과 안내 박스를 하나의 행(Columns)으로 배치
+col_ui1, col_ui2 = st.columns([1, 3], vertical_alignment="center")
+
+with col_ui1:
+    collect_clicked = st.button("🚀 데이터 수집 시작", use_container_width=True)
+
+with col_ui2:
+    if st.session_state.df_data is None:
+        st.info("💡 버튼을 누르면 10개년 기상·미세먼지 학습 데이터 수집 및 전처리가 시작됩니다.")
+    else:
+        st.success("✅ 학습용 데이터셋이 성공적으로 준비되었습니다!")
 
 if collect_clicked:
     status_box = st.status("데이터 수집 준비 중...", expanded=True)
     prog_bar = st.progress(0)
     st.session_state.df_data = collect_and_process_data(status_box, prog_bar)
+    st.rerun()
 
 df = st.session_state.df_data
 
@@ -167,7 +176,6 @@ df = st.session_state.df_data
 if df is not None:
     csv_bytes = df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
 
-    st.success("✅ 학습용 데이터셋이 성공적으로 준비되었습니다!")
     st.download_button(
         label=f"📥 {file_name} 파일 다운로드",
         data=csv_bytes,
@@ -351,7 +359,3 @@ if df is not None:
             df.sort_values("date", ascending=False).head(100),
             use_container_width=True,
         )
-else:
-    st.info(
-        "상단의 '🚀 데이터 수집 시작' 버튼을 누르면 최근 10개년 데이터 실시간 수집·전처리 과정과 함께 계절별 분석 차트가 제공됩니다."
-    )
