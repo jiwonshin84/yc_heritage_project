@@ -14,15 +14,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-st.markdown("""
-<h1 style="font-size:34px; margin-bottom:5px;">
-🏛️영천 국가유산 공간 정보
-</h1>
-<div style="font-size:17px; color:#6b7280; margin-bottom:20px;">
-영천 국가유산을 검색해보세요
-</div>
-""", unsafe_allow_html=True)
-
 
 # =================================================
 # 데이터 로드 및 전처리 (캐싱 적용)
@@ -101,77 +92,88 @@ df = load_data()
 
 
 # =================================================
-# [수정] 상단 필터 및 결과 박스를 감싸는 전체 파란색 카드 시작
+# [수정] Streamlit 내장 컨테이너와 커스텀 CSS로 파란 박스 구현
 # =================================================
 st.markdown("""
-<div style="
+<style>
+/* Streamlit 기본 컨테이너(border=True)의 스타일을 은은한 파란색 톤으로 커스텀 */
+div[data-testid="stVerticalBlockBorderWrapper"] {
     background-color: #f0f6fc;
-    border: 1px solid #d0e1fd;
+    border: 1px solid #d0e1fd !important;
     border-radius: 12px;
-    padding: 20px 20px 20px 20px;
+    padding: 10px 10px;
     margin-bottom: 25px;
-">
+}
+</style>
 """, unsafe_allow_html=True)
 
-f_col1, f_col2, f_col3, f_col4 = st.columns([2, 1.5, 1.5, 1])
-
-with f_col1:
-    search_query = st.text_input("유산 명칭 검색", placeholder="명칭을 입력하세요")
-
-era_order = [
-    "청동기",
-    "신라",
-    "통일신라",
-    "고려초기",
-    "고려",
-    "고려후기",
-    "조선초기",
-    "조선",
-    "조선후기",
-    "대한제국",
-    "기타",
-]
-existing_eras = [e for e in era_order if e in df["시대그룹"].unique()]
-
-with f_col2:
-    selected_era = st.selectbox("시대 선택", ["전체"] + existing_eras)
-
-type_options = ["전체"] + sorted(df["국가유산종목"].unique().tolist())
-with f_col3:
-    selected_type = st.selectbox("종목 선택", type_options)
-
-# 데이터 필터링
-filtered_df = df.copy()
-if search_query:
-    filtered_df = filtered_df[
-        filtered_df["문화재명(국문)"].str.contains(search_query, na=False)
-    ]
-if selected_era != "전체":
-    filtered_df = filtered_df[filtered_df["시대그룹"] == selected_era]
-if selected_type != "전체":
-    filtered_df = filtered_df[filtered_df["국가유산종목"] == selected_type]
-
-with f_col4:
-    st.markdown(f"""
-        <div style="
-            margin-top: 28px;
-            height: 48px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            background-color: #ffffff;
-            border: 1px solid #b8d4fc;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        ">
-            <span style="font-size: 11px; color: #3b71ca; font-weight: 600; line-height: 1.1;">검색 결과</span>
-            <span style="font-size: 16px; color: #1d4ed8; font-weight: bold; line-height: 1.2;">{len(filtered_df)} 건</span>
+# 컨테이너 내부에 제목, 필터, 결과 카드가 모두 깔끔하게 포함됩니다.
+with st.container(border=True):
+    st.markdown("""
+        <h1 style="font-size:32px; margin-top:5px; margin-bottom:0px; color:#1e3a8a;">
+            🏛️ 영천 국가유산 공간 정보
+        </h1>
+        <div style="font-size:15px; color:#4b5563; margin-bottom:15px;">
+            영천 국가유산을 검색해보세요
         </div>
     """, unsafe_allow_html=True)
 
-# 파란색 카드 컨테이너 닫기
-st.markdown("</div>", unsafe_allow_html=True)
+    f_col1, f_col2, f_col3, f_col4 = st.columns([2, 1.5, 1.5, 1])
+
+    with f_col1:
+        search_query = st.text_input("유산 명칭 검색", placeholder="명칭을 입력하세요")
+
+    era_order = [
+        "청동기",
+        "신라",
+        "통일신라",
+        "고려초기",
+        "고려",
+        "고려후기",
+        "조선초기",
+        "조선",
+        "조선후기",
+        "대한제국",
+        "기타",
+    ]
+    existing_eras = [e for e in era_order if e in df["시대그룹"].unique()]
+
+    with f_col2:
+        selected_era = st.selectbox("시대 선택", ["전체"] + existing_eras)
+
+    type_options = ["전체"] + sorted(df["국가유산종목"].unique().tolist())
+    with f_col3:
+        selected_type = st.selectbox("종목 선택", type_options)
+
+    # 데이터 필터링 수행
+    filtered_df = df.copy()
+    if search_query:
+        filtered_df = filtered_df[
+            filtered_df["문화재명(국문)"].str.contains(search_query, na=False)
+        ]
+    if selected_era != "전체":
+        filtered_df = filtered_df[filtered_df["시대그룹"] == selected_era]
+    if selected_type != "전체":
+        filtered_df = filtered_df[filtered_df["국가유산종목"] == selected_type]
+
+    with f_col4:
+        st.markdown(f"""
+            <div style="
+                margin-top: 28px;
+                height: 48px;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                background-color: #ffffff;
+                border: 1px solid #b8d4fc;
+                border-radius: 8px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            ">
+                <span style="font-size: 11px; color: #3b71ca; font-weight: 600; line-height: 1.1;">검색 결과</span>
+                <span style="font-size: 16px; color: #1d4ed8; font-weight: bold; line-height: 1.2;">{len(filtered_df)} 건</span>
+            </div>
+        """, unsafe_allow_html=True)
 
 
 if filtered_df.empty:
