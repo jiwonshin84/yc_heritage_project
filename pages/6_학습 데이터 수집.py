@@ -1,5 +1,5 @@
 from datetime import datetime
-import os
+from github import Github, GithubException
 import time
 import pandas as pd
 import plotly.express as px
@@ -142,16 +142,41 @@ def collect_and_process_data(status_container, progress_bar):
     df["season"] = df["month"].apply(get_season)
 
     # ------------------------------------------------------------
-    # 📂 [자동 저장 기능] data/processed 폴더 안에 CSV 파일 저장
+    # 🚀 GitHub API를 이용해 원격 저장소에 파일 업로드/업데이트
     # ------------------------------------------------------------
-    save_dir = "data/processed"
-    os.makedirs(save_dir, exist_ok=True)  # 폴더가 없으면 자동 생성
-    
-    file_path = os.path.join(save_dir, file_name)
-    df.to_csv(file_path, index=False, encoding="utf-8-sig")
-    
-    # 우측 하단에 성공 토스트 메시지 표시
-    st.toast(f"💾 데이터가 [{file_path}] 경로에 자동 저장되었습니다!", icon="📂")
+    status_container.update(label="☁️ GitHub 저장소로 자동 업로드 중...", state="running")
+    try:
+        token = st.secrets["GITHUB_TOKEN"]
+        repo_name = st.secrets["GITHUB_REPO"]  # 형식: "사용자명/저장소명"
+        
+        g = Github(token)
+        repo = g.get_repo(repo_name)
+        
+        git_file_path = f"data/processed/{file_name}"
+        file_content = df.to_csv(index=False, encoding="utf-8-sig")
+        commit_message = f"chore: 웹앱을 통한 {file_name} 자동 데이터 업데이트"
+        
+        try:
+            contents = repo.get_contents(git_file_path)
+            repo.update_file(
+                path=git_file_path,
+                message=commit_message,
+                content=file_content,
+                sha=contents.sha,
+                branch="main"
+            )
+            st.toast(f"☁️ GitHub [{git_file_path}] 파일이 성공적으로 업데이트되었습니다!", icon="🚀")
+        except Exception:
+            repo.create_file(
+                path=git_file_path,
+                message=commit_message,
+                content=file_content,
+                branch="main"
+            )
+            st.toast(f"☁️ GitHub [{git_file_path}] 파일이 새로 생성(업로드)되었습니다!", icon="🚀")
+            
+    except Exception as e:
+        st.warning(f"⚠️ GitHub API 업로드 중 오류 발생: {e}")
     # ------------------------------------------------------------
 
     progress_bar.progress(1.0)
