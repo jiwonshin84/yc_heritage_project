@@ -154,12 +154,23 @@ with st.container(border=True):
         filtered_df = filtered_df[filtered_df["국가유산종목"] == selected_type]
 
     with f_col4:
-        st.markdown(f"""
-            
-            <span style="font-size: 15px; color: #1d4ed8; font-weight: 600; line-height: 1.1;">검색 결과</span>
-            <span style="font-size: 20px; color: #1d4ed8; font-weight: bold; line-height: 1.2;">{len(filtered_df)} 건</span>
-            
-        """, unsafe_allow_html=True)
+            st.markdown(f"""
+                <div style="
+                    margin-top: 28px;
+                    height: 48px;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                    background-color: #ffffff;
+                    border: 1px solid #b8d4fc;
+                    border-radius: 8px;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+                ">
+                    <span style="font-size: 14px; color: #3b71ca; font-weight: 600; margin-bottom: 2px;">검색 결과</span>
+                    <span style="font-size: 18px; color: #1d4ed8; font-weight: bold;">{len(filtered_df)} 건</span>
+                </div>
+            """, unsafe_allow_html=True)
 
 
 if filtered_df.empty:
