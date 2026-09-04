@@ -10,61 +10,15 @@ from zoneinfo import ZoneInfo
 # ==========================================================
 
 st.set_page_config(
-    page_title="영천 지역 기상 및 대기환경 모니터링",
-    page_icon="🌤",
+    page_title="영천 지역 대기환경 모니터링",
+    page_icon="🌫",
     layout="wide"
 )
 
 SERVICE_KEY = st.secrets.get("SERVICE_KEY", "feb2bfabd299d5d05e89c7aec49ba7e706112603e76549a92e868bd86ec60323")
 
-now = datetime.now(ZoneInfo("Asia/Seoul"))
-
-# 최근 7일 범위 설정 (어제까지)
-end_date_dt = now - timedelta(days=1)
-start_date_dt = now - timedelta(days=7)
-
-end_date = end_date_dt.strftime("%Y%m%d")
-start_date = start_date_dt.strftime("%Y%m%d")
-
 # ==========================================================
-# 1. 기상 데이터 수집 (ASOS - 영천 281)
-# ==========================================================
-
-weather_list = []
-try:
-    asos_params = {
-        "serviceKey": SERVICE_KEY,
-        "numOfRows": "10",
-        "dataType": "JSON",
-        "dataCd": "ASOS",
-        "dateCd": "DAY",
-        "startDt": start_date,
-        "endDt": end_date,
-        "stnIds": "281"
-    }
-    res = requests.get(
-        "https://apis.data.go.kr/1360000/AsosDalyInfoService/getWthrDataList",
-        params=asos_params,
-        timeout=10
-    ).json()
-
-    items = res["response"]["body"]["items"]["item"]
-    for item in items:
-        rf = item.get("sumRn", "0.0")
-        if not rf:
-            rf = "0.0"
-        weather_list.append({
-            "date": item["tm"],
-            "temp": float(item.get("avgTa", 0)),
-            "humidity": float(item.get("avgRhm", 0)),
-            "rainfall": float(rf),
-            "wind": float(item.get("avgWs", 0))
-        })
-except Exception as e:
-    st.warning(f"기상 데이터 수집 실패: {e}")
-
-# ==========================================================
-# 2. 대기오염 데이터 수집 (실시간 측정정보 API)
+# 1. 대기오염 데이터 수집 (실시간 측정정보 API)
 # ==========================================================
 
 air_list = []
@@ -105,66 +59,56 @@ except Exception as e:
     st.warning(f"대기오염 실시간 데이터 수집 실패: {e}")
 
 # ==========================================================
-# 3. 데이터프레임 병합 및 정제
+# 2. 데이터프레임 정제 및 집계
 # ==========================================================
 
-w_df_curr = pd.DataFrame(weather_list)
 a_df_curr = pd.DataFrame(air_list)
 
-if w_df_curr.empty or a_df_curr.empty:
-    st.error("기상 또는 대기오염 데이터를 불러오지 못했습니다. API 키나 네트워크 상태를 확인해주세요.")
+if a_df_curr.empty:
+    st.error("대기오염 데이터를 불러오지 못했습니다. API 키나 네트워크 상태를 확인해주세요.")
     st.stop()
 
-w_df_curr["date"] = pd.to_datetime(w_df_curr["date"])
-a_df_curr["date"] = pd.to_datetime(a_df_curr["date"])
-
 # 날짜별 평균 집계
-w_df_curr = w_df_curr.sort_values("date").groupby("date", as_index=False).mean(numeric_only=True)
 a_df_curr = a_df_curr.sort_values("date").groupby("date", as_index=False).mean(numeric_only=True)
-
-# 두 데이터 병합
-merged_curr = pd.merge(w_df_curr, a_df_curr, on="date", how="left")
-merged_curr = merged_curr.drop_duplicates(subset=["date"], keep="last")
-merged_curr = merged_curr.sort_values("date").reset_index(drop=True)
+a_df_curr = a_df_curr.drop_duplicates(subset=["date"], keep="last")
+a_df_curr = a_df_curr.sort_values("date").reset_index(drop=True)
 
 # 가장 최신 기준일 데이터
-target_row = merged_curr.iloc[-1]
+target_row = a_df_curr.iloc[-1]
 tm = target_row["date"].strftime("%Y-%m-%d")
 
 # ==========================================================
-# 4. 화면 UI 구성
+# 3. 화면 UI 구성
 # ==========================================================
 
-st.title("🌤 영천 지역 기상 및 대기환경 모니터링")
-st.caption(f"조회 기준일자: {tm} (최근 데이터)")
+st.title("🌫 영천 지역 대기오염 모니터링")
+st.caption(f"조회 기준일자: {tm} (실시간 집계)")
 st.divider()
 
-# 최신 지표 요약
-col1, col2 = st.columns(2)
+# 최신 대기오염 지표 요약
+col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.subheader("🌦 최신 기상 정보 (ASOS)")
-    st.metric("평균기온", f"{target_row.get('temp', 0):.1f} °C")
-    st.metric("평균습도", f"{target_row.get('humidity', 0):.1f} %")
-    st.metric("일강수량", f"{target_row.get('rainfall', 0):.1f} mm")
-    st.metric("평균풍속", f"{target_row.get('wind', 0):.1f} m/s")
-
-with col2:
-    st.subheader("🌫 최신 대기오염 정보 (실시간)")
     st.metric("미세먼지 (PM10)", f"{target_row.get('pm10', 0):.0f} ㎍/㎥")
     st.metric("초미세먼지 (PM2.5)", f"{target_row.get('pm25', 0):.0f} ㎍/㎥")
+
+with col2:
     st.metric("오존 (O₃)", f"{target_row.get('o3', 0):.3f} ppm")
     st.metric("이산화질소 (NO₂)", f"{target_row.get('no2', 0):.3f} ppm")
 
+with col3:
+    st.metric("일산화탄소 (CO)", f"{target_row.get('co', 0):.1f} ppm")
+    st.metric("아황산가스 (SO₂)", f"{target_row.get('so2', 0):.3f} ppm")
+
 st.divider()
-st.subheader("📅 최근 환경 데이터 목록")
+st.subheader("📅 최근 대기환경 데이터 목록")
 
 # 날짜 형식 정리용 복사본
-display_df = merged_curr.tail(7).copy()
+display_df = a_df_curr.tail(7).copy()
 display_df["date"] = display_df["date"].dt.strftime("%Y-%m-%d")
 
 st.dataframe(
-    display_df[["date", "temp", "humidity", "rainfall", "wind", "pm10", "pm25", "o3", "no2", "co", "so2"]],
+    display_df[["date", "pm10", "pm25", "o3", "no2", "co", "so2"]],
     use_container_width=True,
     hide_index=True
 )
