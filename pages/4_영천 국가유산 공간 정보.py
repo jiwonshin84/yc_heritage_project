@@ -102,6 +102,18 @@ def load_data():
 df = load_data()
 
 
+# =================================================
+# 상단 필터 영역을 감싸는 전체 카드 컨테이너 시작
+# =================================================
+st.markdown("""
+<div style="
+    background-color: #f0f6fc;
+    border: 1px solid #d0e1fd;
+    border-radius: 12px;
+    padding: 20px 20px 5px 20px;
+    margin-bottom: 25px;
+">
+""", unsafe_allow_html=True)
 
 f_col1, f_col2, f_col3, f_col4 = st.columns([2, 1.5, 1.5, 1])
 
@@ -142,7 +154,6 @@ if selected_type != "전체":
     filtered_df = filtered_df[filtered_df["국가유산종목"] == selected_type]
 
 with f_col4:
-  # 이미지의 부드러운 파란색 카드 톤을 반영한 스타일 적용
   st.markdown(f"""
     <div style="
         margin-top: 0px;
@@ -151,14 +162,18 @@ with f_col4:
         flex-direction: column;
         justify-content: center;
         align-items: center;
-        background-color: #eaf2fb;
-        border: 1px solid #cce0f6;
+        background-color: #ffffff;
+        border: 1px solid #b8d4fc;
         border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     ">
         <span style="font-size: 13px; color: #3b71ca; font-weight: 600; line-height: 1.2;">검색 결과</span>
         <span style="font-size: 18px; color: #1d4ed8; font-weight: bold; line-height: 1.3;">{len(filtered_df)} 건</span>
     </div>
   """, unsafe_allow_html=True)
+
+# 전체 카드 컨테이너 닫기
+st.markdown("</div>", unsafe_allow_html=True)
 
 if filtered_df.empty:
     st.warning("조건에 맞는 유산이 없습니다.")
