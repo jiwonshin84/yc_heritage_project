@@ -72,24 +72,19 @@ try:
     df = load_data()
 
     # -----------------------------------------------------
-    # [최상단 헤더 행] 제목 | AI 도슨트 버튼 | 질문 입력창 & 전송 버튼
+    # [최상단 헤더 행] vertical_alignment="center"를 주어 완벽하게 수직 일직선 정렬
     # -----------------------------------------------------
     header_col1, header_col2, header_col3 = st.columns(
-        [1.3, 1.0, 1.7], gap="medium"
+        [1.3, 1.0, 1.7], gap="medium", vertical_alignment="center"
     )
 
     with header_col1:
         st.markdown(
-            "<h2 style='margin: 0; padding-top: 5px; color: #2c3e50;'>🤖 AI"
-            " 문화재 해설 가이드</h2>",
+            "<h2 style='margin: 0; color: #2c3e50;'>🤖 AI 문화재 해설 가이드</h2>",
             unsafe_allow_html=True,
         )
 
     with header_col2:
-        # 버튼 위 여백을 주어 타이틀 수직 중앙과 맞춤
-        st.markdown(
-            "<div style='height: 2px;'></div>", unsafe_allow_html=True
-        )
         docent_clicked = st.button(
             "✨ AI 도슨트 해설 생성", use_container_width=True
         )
