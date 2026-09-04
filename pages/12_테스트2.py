@@ -1,9 +1,52 @@
 import datetime
+import os
+import joblib
 import pandas as pd
 import requests
 import streamlit as st
 
-# ... (앞부분 생략: 모델 로드 및 설정)
+st.set_page_config(page_title="영천시 전체 문화재 위험도 예측", layout="wide")
+
+st.title("🏛️ 영천시 전체 문화재 실시간 위험도 예측 시스템")
+st.markdown("##### 📌 최근 7일간의 기상 및 대기오염 현황 데이터를 조회합니다.")
+
+# 1. API 키 및 설정 변수를 함수보다 위쪽(상단)으로 이동
+ASOS_SERVICE_KEY = "feb2bfabd299d5d05e89c7aec49ba7e706112603e76549a92e868bd86ec60323"
+ASOS_URL = "http://apis.data.go.kr/1360000/AsosDalyInfoService/getWthrDataList"
+STN_ID = "281"  # 영천 관측소
+
+
+@st.cache_resource
+def load_model_and_heritage():
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    model_path = os.path.join(root_dir, "best_rf_model.pkl")
+    features_path = os.path.join(root_dir, "model_features.pkl")
+    heritage_csv_path = os.path.join(root_dir, "data", "processed", "yc_heritage_feature.csv")
+
+    try:
+        model = joblib.load(model_path)
+        features = joblib.load(features_path)
+    except FileNotFoundError:
+        return None, None, None
+
+    try:
+        heritage_df = pd.read_csv(heritage_csv_path)
+    except Exception as e:
+        heritage_df = None
+        st.error(f"문화재 기본 정보 파일(`yc_heritage_feature.csv`) 로드 실패: {e}")
+
+    return model, features, heritage_df
+
+
+model, feature_cols, heritage_df = load_model_and_heritage()
+
+if model is None:
+    st.warning("⚠️ 학습된 모델이 존재하지 않습니다.")
+    st.stop()
+
+if heritage_df is None:
+    st.stop()
+
 
 def fetch_recent_7days_data():
     """오늘 날짜 기준으로 최근 7일간의 기상 및 대기오염 데이터를 수집합니다."""
@@ -36,7 +79,6 @@ def fetch_recent_7days_data():
 
         weather = pd.DataFrame(items_data["item"])
         
-        # 필요한 기상 컬럼만 추출 및 이름 변경
         weather = weather[[
             "tm", "avgTa", "maxTa", "minTa", "avgRhm", 
             "sumRn", "avgWs", "sumSsHr", "avgTs"
@@ -48,13 +90,11 @@ def fetch_recent_7days_data():
         ]
         weather["date"] = pd.to_datetime(weather["date"], errors="coerce")
 
-        # 숫자형 변환
         numeric_cols = ["temp_avg", "temp_max", "temp_min", "humidity", "rainfall", "wind_speed", "solar_radiation", "ground_temp"]
         for col in numeric_cols:
             weather[col] = pd.to_numeric(weather[col], errors="coerce")
         weather["rainfall"] = weather["rainfall"].fillna(0)
 
-        # 대기오염 데이터 병합
         air_url = "https://docs.google.com/spreadsheets/d/1fBEnheVOP-23Hmv_5ZJZVy6m9VmNkpVd2XutOdmlYc8/export?format=csv&gid=700055413"
         air = pd.read_csv(air_url)
         air["date"] = pd.to_datetime(air["date"], errors="coerce")
@@ -66,15 +106,15 @@ def fetch_recent_7days_data():
         st.error(f"데이터 수집 중 오류 발생: {e}")
         return None
 
-# --- Streamlit 화면 표시 부분 ---
-if st.button("📊 최근 7일간 기상 및 대기오염 현황 조회"):
-    with st.spinner("오늘 기준 최근 7일간의 기상 및 대기오염 데이터를 불러오는 중입니다..."):
+
+# 실행 버튼
+if st.button("📊 오늘 기준 최근 7일간 기상 및 대기오염 현황 조회"):
+    with st.spinner("최근 7일간의 데이터를 불러오는 중입니다..."):
         df_7days = fetch_recent_7days_data()
         
         if df_7days is not None and not df_7days.empty:
             st.success("✅ 최근 7일간 기상 및 대기오염 데이터 연동 완료")
             
-            # 보기 편하게 컬럼명과 순서 정리
             display_df = df_7days[[
                 "date", "temp_avg", "temp_max", "temp_min", 
                 "humidity", "rainfall", "pm10", "pm25", "o3", "so2"
