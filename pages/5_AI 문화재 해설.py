@@ -117,38 +117,24 @@ try:
     df = load_data()
 
     # -----------------------------------------------------
-    # [상단 레이아웃] 품목/도슨트(왼쪽)와 문화재선택/질문(오른쪽) 1:1 대칭 맞춤
+    # [최상단 헤더 및 기능 영역] 타이틀 옆에 도슨트 버튼과 질문박스 배치
     # -----------------------------------------------------
-    top_col1, top_col2 = st.columns(2, gap="medium")
+    header_col1, header_col2, header_col3 = st.columns(
+        [1.2, 1.0, 1.8], gap="medium", vertical_alignment="center"
+    )
 
-    with top_col1:
+    with header_col1:
         st.markdown(
-            "<h2 style='margin: 0 0 15px 0; color: #2c3e50;'>🤖 AI 문화재 해설 가이드</h2>",
+            "<h2 style='margin: 0; color: #2c3e50;'>🤖 AI 문화재 해설 가이드</h2>",
             unsafe_allow_html=True,
         )
-        # 품목 선택 콤보박스 (왼쪽 열 크기에 딱 맞춤)
-        category_col = "종목" if "종목" in df.columns else "국가유산종목"
-        category = st.selectbox(
-            "📂 문화재 품목 선택", sorted(df[category_col].dropna().unique())
-        )
 
-    filtered_df = df[df[category_col] == category]
-
-    with top_col2:
-        # 버튼을 콤보박스 레이블 높이와 맞추기 위한 여백용 빈 공간(또는 타이틀 정렬)
-        st.markdown("<div style='height: 38px;'></div>", unsafe_allow_html=True)
-        # 문화재 선택 콤보박스 (오른쪽 열 크기에 딱 맞춤)
-        heritage = st.selectbox("🏛 문화재 선택", filtered_df["문화재명(국문)"])
-
-    # 도슨트 생성 버튼과 질문 입력창을 각각의 열(Column)에 하단 배치하여 가로폭 일치화
-    action_col1, action_col2 = st.columns(2, gap="medium")
-
-    with action_col1:
+    with header_col2:
         docent_clicked = st.button(
             "✨ AI 도슨트 해설 생성", use_container_width=True
         )
 
-    with action_col2:
+    with header_col3:
         q_in_col, q_btn_col = st.columns([3, 1], gap="small")
         with q_in_col:
             user_q = st.text_input(
@@ -160,6 +146,22 @@ try:
             question_clicked = st.button("질문 전송", use_container_width=True)
 
     st.markdown("---")
+
+    # -----------------------------------------------------
+    # [문화재 선택 필터] 1:1 비율 콤보박스 배치
+    # -----------------------------------------------------
+    category_col = "종목" if "종목" in df.columns else "국가유산종목"
+    col_sel1, col_sel2 = st.columns(2, gap="medium")
+
+    with col_sel1:
+        category = st.selectbox(
+            "📂 문화재 품목 선택", sorted(df[category_col].dropna().unique())
+        )
+
+    filtered_df = df[df[category_col] == category]
+
+    with col_sel2:
+        heritage = st.selectbox("🏛 문화재 선택", filtered_df["문화재명(국문)"])
 
     if st.session_state.last_heritage != heritage:
         st.session_state.last_heritage = heritage
