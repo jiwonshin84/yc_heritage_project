@@ -106,6 +106,19 @@ try:
         docent_clicked = st.button(
             "✨ AI 도슨트 해설 생성", use_container_width=True
         )
+        # 도슨트 버튼 바로 밑에 로딩 및 팝업 연동
+        if docent_clicked:
+            row_temp = df[
+                df["문화재명(국문)"]
+                == st.selectbox(
+                    "🏛 문화재 선택",
+                    df[df["종목" if "종목" in df.columns else "국가유산종목"] == sorted(df["종목" if "종목" in df.columns else "국가유산종목"].dropna().unique())[0]][
+                        "문화재명(국문)"
+                    ],
+                    key="temp_sel_docent",
+                    label_visibility="collapsed",
+                )
+            ].iloc[0]  # 실제 heritage 변수 사용 전 임시 참조 방지용 구조 정리
 
     with header_col3:
         q_in_col, q_btn_col = st.columns([3, 1], gap="small")
@@ -142,31 +155,32 @@ try:
 
     row = filtered_df[filtered_df["문화재명(국문)"] == heritage].iloc[0]
 
-    # [AI 기능 동작 처리 (도슨트 생성 버튼 클릭 시)]
-    if docent_clicked:
-        with st.spinner("AI 해설사가 원고를 작성하고 음성을 준비 중입니다..."):
-            prompt = (
-                f"당신은 영천 문화재 도슨트입니다. '{heritage}'를 역사적 배경과"
-                " 특징을 중심으로 친절하게 설명해주세요. 3~4문장 정도로 핵심만"
-                f" 말해주세요. 자료: {clean(row.get('내용'))}"
-            )
-            response = model.generate_content(prompt)
-            st.session_state.docent_explanation = response.text
-            st.session_state.should_speak = True
-            show_docent_dialog(response.text)
-
-    # [AI 기능 동작 처리 (질문 전송 버튼 클릭 시)]
-    if question_clicked:
-        if user_q:
-            with st.spinner("답변 생성 중..."):
-                res = model.generate_content(
-                    f"{heritage} 질문: {user_q}\n내용:"
-                    f" {clean(row.get('내용'))}"
+    # [AI 기능 동작 처리 (각각의 버튼 영역 직하단에서 로딩 및 팝업 실행)]
+    with header_col2:
+        if docent_clicked:
+            with st.spinner("해설 생성 중..."):
+                prompt = (
+                    f"당신은 영천 문화재 도슨트입니다. '{heritage}'를 역사적 배경과"
+                    " 특징을 중심으로 친절하게 설명해주세요. 3~4문장 정도로 핵심만"
+                    f" 말해주세요. 자료: {clean(row.get('내용'))}"
                 )
-                st.session_state.ai_answer = res.text
-                show_qa_dialog(res.text)
-        else:
-            st.warning("질문을 입력해주세요.")
+                response = model.generate_content(prompt)
+                st.session_state.docent_explanation = response.text
+                st.session_state.should_speak = True
+                show_docent_dialog(response.text)
+
+    with header_col3:
+        if question_clicked:
+            if user_q:
+                with st.spinner("답변 생성 중..."):
+                    res = model.generate_content(
+                        f"{heritage} 질문: {user_q}\n내용:"
+                        f" {clean(row.get('내용'))}"
+                    )
+                    st.session_state.ai_answer = res.text
+                    show_qa_dialog(res.text)
+            else:
+                st.warning("질문을 입력해주세요.")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
