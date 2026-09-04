@@ -24,8 +24,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-
-
 # =================================================
 # 데이터 로드 및 전처리 (캐싱 적용)
 # =================================================
@@ -103,14 +101,14 @@ df = load_data()
 
 
 # =================================================
-# 상단 필터 영역을 감싸는 전체 카드 컨테이너 시작
+# [수정] 상단 필터 및 결과 박스를 감싸는 전체 파란색 카드 시작
 # =================================================
 st.markdown("""
 <div style="
     background-color: #f0f6fc;
     border: 1px solid #d0e1fd;
     border-radius: 12px;
-    padding: 20px 20px 5px 20px;
+    padding: 20px 20px 20px 20px;
     margin-bottom: 25px;
 ">
 """, unsafe_allow_html=True)
@@ -154,32 +152,33 @@ if selected_type != "전체":
     filtered_df = filtered_df[filtered_df["국가유산종목"] == selected_type]
 
 with f_col4:
-  st.markdown(f"""
-    <div style="
-        margin-top: 0px;
-        height: 67px;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        background-color: #ffffff;
-        border: 1px solid #b8d4fc;
-        border-radius: 8px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    ">
-        <span style="font-size: 13px; color: #3b71ca; font-weight: 600; line-height: 1.2;">검색 결과</span>
-        <span style="font-size: 18px; color: #1d4ed8; font-weight: bold; line-height: 1.3;">{len(filtered_df)} 건</span>
-    </div>
-  """, unsafe_allow_html=True)
+    st.markdown(f"""
+        <div style="
+            margin-top: 28px;
+            height: 48px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: #ffffff;
+            border: 1px solid #b8d4fc;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        ">
+            <span style="font-size: 11px; color: #3b71ca; font-weight: 600; line-height: 1.1;">검색 결과</span>
+            <span style="font-size: 16px; color: #1d4ed8; font-weight: bold; line-height: 1.2;">{len(filtered_df)} 건</span>
+        </div>
+    """, unsafe_allow_html=True)
 
-# 전체 카드 컨테이너 닫기
+# 파란색 카드 컨테이너 닫기
 st.markdown("</div>", unsafe_allow_html=True)
+
 
 if filtered_df.empty:
     st.warning("조건에 맞는 유산이 없습니다.")
     st.stop()
 
-    
+
 # =================================================
 # 세션 상태 관리 (중앙 좌표 및 선택 마커)
 # =================================================
@@ -196,6 +195,7 @@ selected_row = filtered_df[
 ].iloc[0]
 center_lat = selected_row["위도"]
 center_lon = selected_row["경도"]
+
 
 # =================================================
 # 레이아웃 구성 (지도 + 우측 목록)
