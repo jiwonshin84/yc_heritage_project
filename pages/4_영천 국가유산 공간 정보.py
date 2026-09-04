@@ -142,8 +142,20 @@ if selected_type != "전체":
   filtered_df = filtered_df[filtered_df["국가유산종목"] == selected_type]
 
 with f_col4:
-  #st.markdown("<br>", unsafe_allow_html=True)  # 줄맞춤용
-  st.metric("검색 결과", f"{len(filtered_df)} 건")
+  # 위젯 라벨(높이)과 맞추기 위해 상단 여백을 살짝 주고, 색상이 들어간 박스 생성
+  st.markdown(f"""
+    <div style="
+        margin-top: 27px;
+        padding: 9px 12px;
+        background-color: #f0f4f8;
+        border: 1px solid #d9e2ec;
+        border-radius: 6px;
+        text-align: center;
+    ">
+        <span style="font-size: 13px; color: #486581; font-weight: 600;">검색 결과</span><br>
+        <span style="font-size: 18px; color: #102a43; font-weight: bold;">{len(filtered_df)} 건</span>
+    </div>
+  """, unsafe_allow_html=True)
 
 if filtered_df.empty:
   st.warning("조건에 맞는 유산이 없습니다.")
@@ -245,5 +257,3 @@ with list_col:
         st.rerun()
 
       st.caption(f"{addr}")
-
-
