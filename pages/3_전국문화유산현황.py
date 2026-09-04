@@ -4,18 +4,14 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 
-# =================================================
-# 페이지 설정
-# =================================================
+
 st.set_page_config(
     page_title="전국 문화유산 현황",
     page_icon="🏛",
     layout="wide"
 )
 
-# =================================================
-# 제목
-# =================================================
+
 st.markdown("""
 <h1 style="font-size:34px; margin-bottom:5px;">
 전국 문화유산 현황
@@ -147,7 +143,7 @@ if df is not None:
     
         fig4 = px.imshow(heatmap_df, text_auto=True, color_continuous_scale="YlGnBu", aspect="auto")
     
-        # 2. 영천시 행 위치에 강조 테두리(Red Box) 그리기
+        # 2. 영천시 행 위치에 강조 테두리
         city_list = list(top_cities)
         if "영천시" in city_list:
             yc_idx = city_list.index("영천시")
@@ -157,8 +153,8 @@ if df is not None:
                 x1=len(heatmap_df.columns) - 0.5,
                 y0=yc_idx - 0.5, 
                 y1=yc_idx + 0.5,
-                line=dict(color="#e74c3c", width=3),  # 강조 테두리 색상 및 두께
-                fillcolor="rgba(0,0,0,0)"            # 내부 투명
+                line=dict(color="#e74c3c", width=3), 
+                fillcolor="rgba(0,0,0,0)"            
             )
     
         fig4.update_layout(height=500, margin=dict(t=20, l=10, r=10, b=10), coloraxis_showscale=False)
@@ -238,9 +234,7 @@ if df is not None:
         )
         st.plotly_chart(fig6, use_container_width=True)
 
-    # =================================================
-    # 하단 설명
-    # =================================================
+
     st.divider()
     
     st.info("""
