@@ -5,16 +5,14 @@ import streamlit as st
 from folium.plugins import HeatMap, MarkerCluster
 from streamlit_folium import st_folium
 
-# =================================================
-# 페이지 설정 (layout="wide")
-# =================================================
+
 st.set_page_config(
     page_title="영천 국가유산 공간 정보",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# 제목과 안내 문구는 박스 밖 원래 자리로 복원
+
 st.markdown("""
 <h1 style="font-size:34px; margin-bottom:5px;">
 🏛️ 영천 국가유산 공간 정보
@@ -139,7 +137,7 @@ with st.container(border=True):
     with f_col3:
         selected_type = st.selectbox("종목 선택", type_options)
 
-    # 데이터 필터링 수행
+    
     filtered_df = df.copy()
     if search_query:
         filtered_df = filtered_df[
