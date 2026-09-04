@@ -52,7 +52,25 @@ def speak_text(text):
 
 
 # =====================================================
-# 4. 데이터 처리 함수
+# 4. 팝업(Dialog) 함수 정의
+# =====================================================
+@st.dialog("✨ AI 도슨트 해설", width="large")
+def show_docent_dialog(text):
+    st.info(text)
+    speak_text(text)
+    if st.button("확인", use_container_width=True):
+        st.rerun()
+
+
+@st.dialog("💬 AI 질문 답변", width="large")
+def show_qa_dialog(text):
+    st.success(text)
+    if st.button("확인", use_container_width=True):
+        st.rerun()
+
+
+# =====================================================
+# 5. 데이터 처리 함수
 # =====================================================
 @st.cache_data
 def load_data():
@@ -66,7 +84,7 @@ def clean(val):
 
 
 # =====================================================
-# 5. 메인 UI 렌더링
+# 6. 메인 UI 렌더링
 # =====================================================
 try:
     df = load_data()
@@ -135,6 +153,7 @@ try:
             response = model.generate_content(prompt)
             st.session_state.docent_explanation = response.text
             st.session_state.should_speak = True
+            show_docent_dialog(response.text)
 
     # [AI 기능 동작 처리 (질문 전송 버튼 클릭 시)]
     if question_clicked:
@@ -145,22 +164,11 @@ try:
                     f" {clean(row.get('내용'))}"
                 )
                 st.session_state.ai_answer = res.text
+                show_qa_dialog(res.text)
         else:
             st.warning("질문을 입력해주세요.")
 
-    # [AI 결과 출력 영역 (도슨트 해설 및 질문 답변)]
-    if st.session_state.docent_explanation or st.session_state.ai_answer:
-        res_col1, res_col2 = st.columns(2, gap="medium")
-        with res_col1:
-            if st.session_state.docent_explanation:
-                st.info(st.session_state.docent_explanation)
-                if st.session_state.should_speak:
-                    speak_text(st.session_state.docent_explanation)
-                    st.session_state.should_speak = False
-        with res_col2:
-            if st.session_state.ai_answer:
-                st.success(st.session_state.ai_answer)
-        st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
 
     # [좌우 분할 콘텐츠 - 콤보박스와 동일한 1:1 비율로 세로 라인 일치화]
     left_col, right_col = st.columns(2, gap="medium")
