@@ -117,10 +117,10 @@ try:
     df = load_data()
 
     # -----------------------------------------------------
-    # [최상단 헤더 및 기능 영역] 타이틀 옆에 도슨트 버튼과 질문박스 배치
+    # [최상단 헤더 행] 수직 일직선 정렬
     # -----------------------------------------------------
     header_col1, header_col2, header_col3 = st.columns(
-        [1.2, 1.0, 1.8], gap="medium", vertical_alignment="center"
+        [1.3, 1.0, 1.7], gap="medium", vertical_alignment="center"
     )
 
     with header_col1:
@@ -147,9 +147,7 @@ try:
 
     st.markdown("---")
 
-    # -----------------------------------------------------
-    # [문화재 선택 필터] 1:1 비율 콤보박스 배치
-    # -----------------------------------------------------
+    # [문화재 선택 필터] (1:1 비율로 콤보박스 배치)
     category_col = "종목" if "종목" in df.columns else "국가유산종목"
     col_sel1, col_sel2 = st.columns(2, gap="medium")
 
