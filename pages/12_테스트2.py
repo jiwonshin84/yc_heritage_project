@@ -8,12 +8,23 @@ import streamlit as st
 st.set_page_config(page_title="영천시 전체 문화재 위험도 예측", layout="wide")
 
 st.title("🏛️ 영천시 전체 문화재 실시간 위험도 예측 시스템")
-st.markdown("##### 📌 최근 7일간의 기상 및 대기오염 현황 데이터를 조회합니다.")
+st.markdown("##### 📌 기상청 데이터 집계 지연일 등을 고려하여 조회 기준일을 직접 설정할 수 있습니다.")
 
-# 1. API 키 및 설정 변수를 함수보다 위쪽(상단)으로 이동
+# API 키 및 설정 변수
 ASOS_SERVICE_KEY = "feb2bfabd299d5d05e89c7aec49ba7e706112603e76549a92e868bd86ec60323"
 ASOS_URL = "http://apis.data.go.kr/1360000/AsosDalyInfoService/getWthrDataList"
 STN_ID = "281"  # 영천 관측소
+
+# 🎛️ 사용자가 직접 오프셋(일수)을 입력하는 위젯 생성
+st.sidebar.header("⚙️ 조회 설정")
+input_days = st.sidebar.number_input(
+    "오늘 기준 며칠 전부터 데이터(7일간)를 조회할까요?",
+    min_value=0,
+    max_value=30,
+    value=2,
+    step=1,
+    help="기상청 데이터 집계 지연을 고려하여 며칠 전을 기준일로 삼을지 결정합니다."
+)
 
 
 @st.cache_resource
@@ -33,7 +44,7 @@ def load_model_and_heritage():
         heritage_df = pd.read_csv(heritage_csv_path)
     except Exception as e:
         heritage_df = None
-        st.error(f"문화재 기본 정보 파일(`yc_heritage_feature.csv`) 로드 실패: {e}")
+        st.error(f"문화재 기본 정보 파일 로드 실패: {e}")
 
     return model, features, heritage_df
 
@@ -48,9 +59,9 @@ if heritage_df is None:
     st.stop()
 
 
-def fetch_recent_7days_data():
-    """오늘 날짜 기준으로 최근 7일간의 기상 및 대기오염 데이터를 수집합니다."""
-    today = datetime.date.today()
+def fetch_custom_days_data(offset_days):
+    """사용자가 입력한 오프셋(offset_days)을 반영하여 최근 7일간의 데이터를 수집합니다."""
+    today = datetime.date.today() - datetime.timedelta(days=offset_days)
     start_date = today - datetime.timedelta(days=7)
     
     start_str = start_date.strftime("%Y%m%d")
@@ -108,12 +119,12 @@ def fetch_recent_7days_data():
 
 
 # 실행 버튼
-if st.button("📊 오늘 기준 최근 7일간 기상 및 대기오염 현황 조회"):
-    with st.spinner("최근 7일간의 데이터를 불러오는 중입니다..."):
-        df_7days = fetch_recent_7days_data()
+if st.button("📊 설정한 일수 기준으로 기상 및 대기오염 현황 조회"):
+    with st.spinner(f"오늘 기준 {input_days}일 전부터의 데이터를 불러오는 중입니다..."):
+        df_7days = fetch_custom_days_data(input_days)
         
         if df_7days is not None and not df_7days.empty:
-            st.success("✅ 최근 7일간 기상 및 대기오염 데이터 연동 완료")
+            st.success(f"✅ 데이터 연동 완료 (기준 오프셋: {input_days}일 전)")
             
             display_df = df_7days[[
                 "date", "temp_avg", "temp_max", "temp_min", 
