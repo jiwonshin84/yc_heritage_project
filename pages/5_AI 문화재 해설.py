@@ -72,7 +72,7 @@ try:
     df = load_data()
 
     # -----------------------------------------------------
-    # [최상단 헤더 행] vertical_alignment="center"를 주어 완벽하게 수직 일직선 정렬
+    # [최상단 헤더 행] 수직 일직선 정렬
     # -----------------------------------------------------
     header_col1, header_col2, header_col3 = st.columns(
         [1.3, 1.0, 1.7], gap="medium", vertical_alignment="center"
@@ -90,7 +90,6 @@ try:
         )
 
     with header_col3:
-        # 질문 입력창과 전송 버튼을 가로로 배치하기 위한 내부 분할
         q_in_col, q_btn_col = st.columns([3, 1], gap="small")
         with q_in_col:
             user_q = st.text_input(
@@ -124,13 +123,6 @@ try:
         st.session_state.should_speak = False
 
     row = filtered_df[filtered_df["문화재명(국문)"] == heritage].iloc[0]
-
-    # [상단 타이틀 배너]
-    st.markdown(f"""
-        <div style="background-color:#f8f9fa; padding:20px; border-radius:15px; text-align:center; margin-top:15px; margin-bottom:25px; border:1px solid #e9ecef;">
-            <h1 style="margin:0; color:#2c3e50; font-size:32px;">🏛 {heritage}</h1>
-        </div>
-    """, unsafe_allow_html=True)
 
     # [AI 기능 동작 처리 (도슨트 생성 버튼 클릭 시)]
     if docent_clicked:
@@ -182,8 +174,9 @@ try:
             st.info("🖼 등록된 이미지가 없습니다.")
 
     with right_col:
+        # '상세 정보' 제목에 문화재 이름이 함께 나오도록 수정
         st.markdown(
-            "<h3 style='margin-top:0; color:#2c3e50;'>📋 상세 정보</h3>",
+            f"<h3 style='margin-top:0; color:#2c3e50;'>📋 {heritage} 상세 정보</h3>",
             unsafe_allow_html=True,
         )
         st.markdown(f"""
