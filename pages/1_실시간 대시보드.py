@@ -10,15 +10,12 @@ import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 from streamlit_folium import st_folium
 
-# ============================================
-# Streamlit 페이지 기본 설정
-# ============================================
 st.set_page_config(
     page_title="공공 환경 데이터 기반 영천 지역 실시간 환경 현황",
     page_icon="🏠",
     layout="wide",
 )
-# 상단 기본 여백을 줄이되, 사이드바(메뉴)는 유지하도록 설정
+
 st.markdown(
     """
     <style>
@@ -239,14 +236,14 @@ title_style = (
 label_style = "font-size:18px; color:#6b7280; margin-bottom:2px;"
 
 # --------------------------------------------
-# 1행 : [좌측] 실시간 날씨 지도 & [우측] 대기오염 및 문화재 현황
+# 1행 : 실시간 날씨 지도 / 대기오염 및 문화재 현황
 # --------------------------------------------
 map_col, right_col = st.columns([1.8, 1.0])
 
 with map_col:
   m = folium.Map(location=[36.0650, 128.8740], zoom_start=10.5)
 
-  # 상자 크기 (고정값으로 앵커 계산에 사용)
+  
   BOX_W = 170
   BOX_H = 100
 
@@ -331,7 +328,7 @@ with right_col:
       unsafe_allow_html=True,
   )
 
-  # 2. 대기현황 밑에 위치한 문화재 수 카드
+  # 2. 문화재 수 카드
   st.markdown(
       f"""
 <div style="background-color:#f8f9fa; padding:12px 14px; border-radius:14px; border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,0.04);">
