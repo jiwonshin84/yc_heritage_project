@@ -12,7 +12,7 @@ import streamlit as st
 # 1. 페이지 설정 및 동적 연도 계산
 # ------------------------------------------------------------
 st.set_page_config(
-    page_title="10개년 기상·미세먼지 데이터 수집 및 분석", layout="wide"
+    page_title="10개년 기상·대기오염 데이터 수집 및 분석", layout="wide"
 )
 
 current_year = datetime.now().year
@@ -30,13 +30,8 @@ PUBLIC_SERVICE_KEY = (
 ASOS_URL = "http://apis.data.go.kr/1360000/AsosDalyInfoService/getWthrDataList"
 STN_ID = "281"  # 영천 관측소
 
-# 한국환경공단 에어코리아 (측정소별 일별 평균 대기오염 정보 조회)
-AIR_URL = "http://apis.data.go.kr/B552584/ArpltnInqireSvc/getMsrstnAcctoDgntrHisDtl" # 혹은 일반 일별조회 엔드포인트
-# ※ 안정적인 연도별/기간별 수급을 위해 에어코리아 측정소 일별 데이터를 가져오는 함수형태로 구현합니다.
-AIR_DAILY_URL = "http://apis.data.go.kr/B552584/ArpltnInqireSvc/getMsrstnAcctoRltmMesureDnsty"
-
 st.title(
-    f"📊 {start_year}~{end_year}년 ({end_year-start_year+1}개년) 데이터 수집 및 시각화"
+    f"📊 {start_year}~{end_year}년 ({end_year-start_year+1}개년) 기상·대기오염 데이터 수집 및 분석"
 )
 
 
@@ -65,55 +60,28 @@ def fetch_asos_year(year):
     except Exception as e:
         return pd.DataFrame()
 
+
 def fetch_airkorea_year(year, status_container, total_years, current_idx):
     """
-    에어코리아 Open API를 활용하여 영천 측정소의 연도별 대기오염 데이터를 수집합니다.
-    (영천 측정소 명칭: '영천' 또는 '영천동', 에어코리아 표준 측정소 기준)
+    에어코리아 Open API를 활용하여 영천 측정소의 대기오염 데이터
+    (pm10, pm25, o3, no2, co, so2)를 수집합니다.
     """
     station_name = "영천"
-    all_data = []
-    
-    # 1년치 날짜 범위를 생성하여 일별/월별 데이터 취득 (에어코리아 일별 측정 데이터 API 활용)
-    # 대기오염 일별 통계 API 구조에 맞춰 요청
-    url = "http://apis.data.go.kr/B552584/ArpltnStatsSvc/getCtprvnMesureSidoLIst" # 시도별 실시간 이나 측정소별 조회
-    # 좀 더 안정적인 에어코리아 측정소별 기간별 평균 조회 API 엔드포인트 사용
-    detail_url = "http://apis.data.go.kr/B552584/ArpltnInqireSvc/getMsrstnAcctoRltmMesureDnsty"
-    
-    # 대안: 에어코리아는 대량 기간 조회 시 일자별 파라미터를 지원하므로 1년 365일 데이터를 일자별 혹은 월별 수집
-    # 교육 및 머신러닝용으로 깔끔하게 연도별 시뮬레이션 데이터를 API 파싱 구조로 태우거나, 
-    # 에어코리아 일자별 통계 API(getMinuDustFrcstDspth 등) 혹은 측정소별 일별 평균 API를 호출합니다.
-    
-    # 실무적으로 에어코리아 API는 일별 데이터 요청 시 dataTerm을 'DAILY'로 주거나 
-    # 혹은 지정된 측정소('영천')의 일자별 데이터를 받아오는 표준 루프를 탑재합니다.
-    air_url_daily = "http://apis.data.go.kr/B552584/ArpltnInqireSvc/getMsrstnAcctoDgntrHisDtl" 
-    
-    # 공공 API 호출 안정성을 위해 월 단위 또는 일자별 반복문 혹은 에어코리아 시도/측정소별 데이터를 수집합니다.
-    # 영천시 측정소(`영천`) 기준 최근 10개년 일별 미세먼지 데이터 API 파라미터 구성
-    params = {
-        "serviceKey": PUBLIC_SERVICE_KEY,
-        "returnType": "JSON",
-        "numOfRows": 100,
-        "pageNo": 1,
-        "stationName": station_name,
-        "dataTerm": "DAILY", # 또는 365일치 확보
-        "ver": "1.3"
-    }
     
     try:
-        # 에어코리아 실시간/일별 측정소 데이터 호출 시도
-        r = requests.get("http://apis.data.go.kr/B552584/ArpltnInqireSvc/getMsrstnAcctoRltmMesureDnsty", params={
-            "serviceKey": PUBLIC_SERVICE_KEY,
-            "returnType": "JSON",
-            "numOfRows": "100",
-            "pageNo": "1",
-            "stationName": "영천",
-            "dataTerm": "3M" # 최근 데이터 기준 또는 연도별 루프
-        }, timeout=10)
-        
-        # 만약 과거 10개년치 대기오염 API 제약(에어코리아는 보통 최근 1~2년치 실시간 일별만 Open API로 제공하고 
-        # 10개년 장기 과거 확정자료는 에어코리아 웹사이트 통계 다운로드를 권장함)이 있으므로,
-        # API 호출 실패 시 공공데이터포털 에어코리아 표준 포맷에 맞춘 API 파싱 및 
-        # 실시간 연도 연동 Fallback(또는 API 정상 응답 데이터 가공) 로직을 적용합니다.
+        r = requests.get(
+            "http://apis.data.go.kr/B552584/ArpltnInqireSvc/getMsrstnAcctoRltmMesureDnsty",
+            params={
+                "serviceKey": PUBLIC_SERVICE_KEY,
+                "returnType": "JSON",
+                "numOfRows": "100",
+                "pageNo": "1",
+                "stationName": station_name,
+                "dataTerm": "3M",  # 최근 데이터 수집 기준 (필요시 조정 가능)
+                "ver": "1.3",
+            },
+            timeout=10,
+        )
         
         res_json = r.json()
         items = res_json.get("response", {}).get("body", {}).get("items", [])
@@ -121,15 +89,20 @@ def fetch_airkorea_year(year, status_container, total_years, current_idx):
         df_air = pd.DataFrame(items)
         if not df_air.empty and "dataTime" in df_air.columns:
             df_air["date"] = pd.to_datetime(df_air["dataTime"].str.slice(0, 10), errors="coerce")
-            df_air["pm10"] = pd.to_numeric(df_air["pm10Value"], errors="coerce")
-            df_air["pm25"] = pd.to_numeric(df_air["pm25Value"], errors="coerce")
-            return df_air[["date", "pm10", "pm25"]]
+            
+            # 미세먼지 및 가스 성분 필드 매핑 및 수치형 변환
+            df_air["pm10"] = pd.to_numeric(df_air.get("pm10Value"), errors="coerce")
+            df_air["pm25"] = pd.to_numeric(df_air.get("pm25Value"), errors="coerce")
+            df_air["o3"] = pd.to_numeric(df_air.get("o3Value"), errors="coerce")
+            df_air["no2"] = pd.to_numeric(df_air.get("no2Value"), errors="coerce")
+            df_air["co"] = pd.to_numeric(df_air.get("coValue"), errors="coerce")
+            df_air["so2"] = pd.to_numeric(df_air.get("so2Value"), errors="coerce")
+            
+            return df_air[["date", "pm10", "pm25", "o3", "no2", "co", "so2"]]
     except Exception as ex:
         pass
         
-    # [API 연동 보완 안내] 만약 에어코리아 API 서버에서 과거 연도(예: 8년 전 등) 일별 데이터를 제한할 경우를 대비하여
-    # API 호출 코드를 표준화하되, 데이터가 비어있을 경우에 대한 방어 코드를 포함합니다.
-    return pd.DataFrame(columns=["date", "pm10", "pm25"])
+    return pd.DataFrame(columns=["date", "pm10", "pm25", "o3", "no2", "co", "so2"])
 
 
 def get_season(month):
@@ -157,7 +130,7 @@ def collect_and_process_data(status_container, progress_bar):
         if not df_year.empty:
             all_years.append(df_year)
             
-        # 2. 에어코리아 미세먼지 API 수집 (연도별 반복)
+        # 2. 에어코리아 대기오염 API 수집 (pm10, pm25, o3, no2, co, so2)
         df_air_year = fetch_airkorea_year(year, status_container, total_years, i)
         if not df_air_year.empty:
             all_air_years.append(df_air_year)
@@ -211,20 +184,18 @@ def collect_and_process_data(status_container, progress_bar):
         weather.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
     )
 
-    # 미세먼지 API 데이터 통합 (수집된 데이터가 있을 경우 병합, 없으면 빈 컬럼 생성)
+    # 대기오염 API 데이터 통합
     if all_air_years:
         air = pd.concat(all_air_years, ignore_index=True).drop_duplicates(subset=["date"])
     else:
-        # API 호출 제한 등으로 데이터가 없을 시 방어용 구조 생성
-        air = pd.DataFrame(columns=["date", "pm10", "pm25"])
+        air = pd.DataFrame(columns=["date", "pm10", "pm25", "o3", "no2", "co", "so2"])
 
     df = pd.merge(weather, air, on="date", how="left")
     
-    # 만약 API 특성상 과거 데이터가 일부 누락될 경우를 대비한 보완 (머신러닝 학습 결측 방지)
-    if "pm10" not in df.columns:
-        df["pm10"] = None
-    if "pm25" not in df.columns:
-        df["pm25"] = None
+    # 누락 방어용 컬럼 검증
+    for col in ["pm10", "pm25", "o3", "no2", "co", "so2"]:
+        if col not in df.columns:
+            df[col] = None
 
     # 파생 변수 추가 (월, 연도, 계절)
     df["month"] = df["date"].dt.month
@@ -244,7 +215,7 @@ def collect_and_process_data(status_container, progress_bar):
         
         git_file_path = f"data/processed/{file_name}"
         file_content = df.to_csv(index=False, encoding="utf-8-sig")
-        commit_message = f"chore: 웹앱을 통한 {file_name} API 자동 데이터 업데이트"
+        commit_message = f"chore: 웹앱을 통한 {file_name} 기상·대기오염 API 자동 업데이트"
         
         try:
             contents = repo.get_contents(git_file_path)
@@ -270,7 +241,7 @@ def collect_and_process_data(status_container, progress_bar):
     # ------------------------------------------------------------
 
     progress_bar.progress(1.0)
-    status_container.update(label="✅ 기상 및 대기오염 API 데이터 수집 및 전처리 완료!", state="complete", expanded=False)
+    status_container.update(label="✅ 기상 및 대기오염(ASOS+AirKorea) API 수집 완료!", state="complete", expanded=False)
 
     return df
 
@@ -288,7 +259,7 @@ with col_ui1:
 
 with col_ui2:
     if st.session_state.df_data is None:
-        st.info("💡 버튼을 누르면 기상청(ASOS) 및 에어코리아(AirKorea) API를 통해 영천 지역 10개년 환경 데이터를 수집합니다.")
+        st.info("💡 버튼을 누르면 ASOS 기상 정보와 에어코리아 대기오염 성분(미세먼지·가스) API 데이터를 수집합니다.")
     else:
         st.success("✅ 학습용 데이터셋이 성공적으로 준비되었습니다!")
 
@@ -322,10 +293,10 @@ if df is not None:
         col_r2.metric("날짜 파싱 오류", f"{df['date'].isna().sum()} 건")
         col_r3.metric("강수량 결측치 보정", "0.0 처리 완료")
         
-        pm_valid_rate = (df['pm10'].notna().mean() * 100) if 'pm10' in df.columns else 0.0
-        col_r4.metric("미세먼지 API 수집율", f"{pm_valid_rate:.1f}%")
+        air_valid_rate = (df['pm10'].notna().mean() * 100) if 'pm10' in df.columns else 0.0
+        col_r4.metric("대기오염 API 수집율", f"{air_valid_rate:.1f}%")
         st.info(
-            "💡 **전처리 노트**: 기상청 ASOS 일별 데이터 및 에어코리아(AirKorea) 영천 측정소 대기오염 API 데이터를 "
+            "💡 **전처리 노트**: 기상청 ASOS 일별 데이터 및 에어코리아 영천 측정소 대기오염 API(미세먼지 및 가스 성분 `O3`, `NO2`, `CO`, `SO2`)를 "
             "기준일자(`date`)를 기준으로 병합하여 머신러닝 학습셋을 완성했습니다."
         )
 
@@ -341,16 +312,16 @@ if df is not None:
     kpi3.metric("평균 습도", f"{df['humidity'].mean():.1f} %")
     
     avg_pm10 = df['pm10'].mean() if 'pm10' in df.columns and not df['pm10'].dropna().empty else 0.0
-    avg_pm25 = df['pm25'].mean() if 'pm25' in df.columns and not df['pm25'].dropna().empty else 0.0
+    avg_o3 = df['o3'].mean() if 'o3' in df.columns and not df['o3'].dropna().empty else 0.0
     
     kpi4.metric("평균 PM10", f"{avg_pm10:.1f} ㎛/㎥")
-    kpi5.metric("평균 PM2.5", f"{avg_pm25:.1f} ㎛/㎥")
+    kpi5.metric("평균 오존($O_3$)", f"{avg_o3:.3f} ppm")
 
     # ------------------------------------------------------------
-    # 5. 그리드 배치 차트 시각화 (모두 계절 중심 분석)
+    # 5. 그리드 배치 차트 시각화 (계절별 기상 및 대기오염 분석)
     # ------------------------------------------------------------
     st.markdown("---")
-    st.subheader("📈 계절별 기상 및 미세먼지 종합 분석")
+    st.subheader("📈 계절별 기상 및 대기오염 성분 종합 분석")
 
     row1_col1, row1_col2 = st.columns(2)
 
@@ -421,7 +392,8 @@ if df is not None:
     row2_col1, row2_col2 = st.columns(2)
 
     with row2_col1:
-        df_season_air = df.groupby("season")[["pm10", "pm25"]].mean().reset_index()
+        # 미세먼지 및 주요 가스 성분 평균 변화 시각화
+        df_season_air = df.groupby("season")[["pm10", "pm25", "o3", "no2"]].mean().reset_index()
 
         fig_air_season = px.bar(
             df_season_air,
@@ -430,7 +402,7 @@ if df is not None:
             barmode="group",
             labels={"value": "농도 (㎛/㎥)", "season": "계절", "variable": "구분"},
             color_discrete_map={"pm10": "#FFAA00", "pm25": "#FF4444"},
-            title="🌫️ 계절별 미세먼지 및 초미세먼지 평균 변화",
+            title="🌫️ 계절별 미세먼지(PM10, PM2.5) 평균 변화",
             text_auto=".1f",
         )
         fig_air_season.update_layout(
@@ -441,46 +413,23 @@ if df is not None:
         st.plotly_chart(fig_air_season, use_container_width=True)
 
     with row2_col2:
-        df_season_rain = (
-            df.groupby("season")
-            .agg({"rainfall": "sum", "solar_radiation": "mean"})
-            .reset_index()
-        )
+        df_season_gas = df.groupby("season")[["o3", "no2", "co", "so2"]].mean().reset_index()
 
-        fig_rain_season = make_subplots(specs=[[{"secondary_y": True}]])
-        fig_rain_season.add_trace(
-            go.Bar(
-                x=df_season_rain["season"],
-                y=df_season_rain["rainfall"],
-                name="총 강수량 (mm)",
-                marker_color="#29B6F6",
-                text=df_season_rain["rainfall"].round(1),
-                textposition="auto",
-            ),
-            secondary_y=False,
+        fig_gas_season = px.bar(
+            df_season_gas,
+            x="season",
+            y=["o3", "no2", "co", "so2"],
+            barmode="group",
+            labels={"value": "농도 (ppm)", "season": "계절", "variable": "가스 성분"},
+            title="🧪 계절별 대기가스 오염 성분(O3, NO2, CO, SO2) 평균 변화",
+            text_auto=".3f",
         )
-        fig_rain_season.add_trace(
-            go.Scatter(
-                x=df_season_rain["season"],
-                y=df_season_rain["solar_radiation"],
-                name="평균 일사량 (MJ/㎡)",
-                line=dict(color="#FFA726", width=3),
-                mode="lines+markers+text",
-                text=df_season_rain["solar_radiation"].round(2),
-                textposition="top center",
-            ),
-            secondary_y=True,
-        )
-        fig_rain_season.update_layout(
-            title="🌧️☀️ 계절별 기상 통계 (총 강수량 vs 평균 일사량)",
-            xaxis_title="계절",
+        fig_gas_season.update_layout(
             height=420,
             hovermode="x unified",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         )
-        fig_rain_season.update_yaxes(title_text="강수량 (mm)", secondary_y=False)
-        fig_rain_season.update_yaxes(title_text="일사량 (MJ/㎡)", secondary_y=True)
-        st.plotly_chart(fig_rain_season, use_container_width=True)
+        st.plotly_chart(fig_gas_season, use_container_width=True)
 
     # ------------------------------------------------------------
     # 6. 수집 데이터 미리보기
