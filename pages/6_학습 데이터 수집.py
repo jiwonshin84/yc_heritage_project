@@ -1,4 +1,5 @@
 from datetime import datetime
+import io
 from github import Github, GithubException
 import time
 import pandas as pd
@@ -134,7 +135,7 @@ def collect_and_process_data(status_container, progress_bar):
   )
 
   # ------------------------------------------------------------
-  # 🔗 GitHub 저장소 내 대기오염 데이터 병합
+  # 🔗 GitHub API를 통한 대기오염 학습 데이터셋 안전 병합
   # ------------------------------------------------------------
   status_container.update(
       label="🔗 깃허브 저장소 대기오염 학습 데이터셋 병합 중...",
@@ -148,19 +149,14 @@ def collect_and_process_data(status_container, progress_bar):
 
     air_file_path = "data/processed/[2019_2025] air_quality.csv"
     file_content = repo.get_contents(air_file_path)
-    # decoded_content를 이용해 pandas로 읽기
     air = pd.read_csv(
-        pd.compat.StringIO(file_content.decoded_content.decode("utf-8-sig"))
+        io.StringIO(file_content.decoded_content.decode("utf-8-sig"))
     )
   except Exception as e:
-    # 깃허브 API를 통한 호출이 여의치 않을 경우 Raw URL 직접 호출 대체 방안
-    air_raw_url = (
-        "https://raw.githubusercontent.com/yc_heritage_project/main/data/processed/[2019_2025] air_quality.csv"
+    st.error(
+        f"❌ 대기오염 데이터를 GitHub에서 불러오는 중 오류가 발생했습니다: {e}"
     )
-    # Secrets 설정에 따라 리포지토리 이름을 동적으로 반영할 수도 있습니다.
-    repo_name_safe = st.secrets.get("GITHUB_REPO", "yc_heritage_project")
-    air_raw_url = f"https://raw.githubusercontent.com/{repo_name_safe}/main/data/processed/%5B2019_2025%5D%20air_quality.csv"
-    air = pd.read_csv(air_raw_url)
+    air = pd.DataFrame(columns=["date", "pm10", "pm25"])
 
   air["date"] = pd.to_datetime(air["date"], errors="coerce")
   df = pd.merge(weather, air, on="date", how="left")
@@ -177,12 +173,6 @@ def collect_and_process_data(status_container, progress_bar):
       label="☁️ GitHub 저장소로 자동 업로드 중...", state="running"
   )
   try:
-    token = st.secrets["GITHUB_TOKEN"]
-    repo_name = st.secrets["GITHUB_REPO"]
-
-    g = Github(token)
-    repo = g.get_repo(repo_name)
-
     git_file_path = f"data/processed/{file_name}"
     file_content_str = df.to_csv(index=False, encoding="utf-8-sig")
     commit_message = f"chore: 웹앱을 통한 {file_name} 자동 데이터 업데이트"
@@ -276,8 +266,14 @@ if df is not None:
   kpi1.metric("총 관측 일수", f"{len(df):,} 일")
   kpi2.metric("평균 기온", f"{df['temp_avg'].mean():.1f} °C")
   kpi3.metric("평균 습도", f"{df['humidity'].mean():.1f} %")
-  kpi4.metric("평균 PM10", f"{df['pm10'].mean():.1f} ㎛/㎥")
-  kpi5.metric("평균 PM2.5", f"{df['pm25'].mean():.1f} ㎛/㎥")
+  kpi4.metric(
+      "평균 PM10",
+      f"{df['pm10'].mean():.1f} ㎛/㎥" if "pm10" in df.columns else "N/A",
+  )
+  kpi5.metric(
+      "평균 PM2.5",
+      f"{df['pm25'].mean():.1f} ㎛/㎥" if "pm25" in df.columns else "N/A",
+  )
 
   # 시각화 차트 영역
   st.markdown("---")
@@ -360,70 +356,72 @@ if df is not None:
   row2_col1, row2_col2 = st.columns(2)
 
   with row2_col1:
-    df_season_air = (
-        df.groupby("season")[["pm10", "pm25"]].mean().reset_index()
-    )
-    fig_air_season = px.bar(
-        df_season_air,
-        x="season",
-        y=["pm10", "pm25"],
-        barmode="group",
-        labels={"value": "농도 (㎛/㎥)", "season": "계절", "variable": "구분"},
-        color_discrete_map={"pm10": "#FFAA00", "pm25": "#FF4444"},
-        title="🌫️ 계절별 미세먼지 및 초미세먼지 평균 변화",
-        text_auto=".1f",
-    )
-    fig_air_season.update_layout(
-        height=420,
-        hovermode="x unified",
-        legend=dict(
-            orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
-        ),
-    )
-    st.plotly_chart(fig_air_season, use_container_width=True)
+    if "pm10" in df.columns and "pm25" in df.columns:
+      df_season_air = (
+          df.groupby("season")[["pm10", "pm25"]].mean().reset_index()
+      )
+      fig_air_season = px.bar(
+          df_season_air,
+          x="season",
+          y=["pm10", "pm25"],
+          barmode="group",
+          labels={"value": "농도 (㎛/㎥)", "season": "계절", "variable": "구분"},
+          color_discrete_map={"pm10": "#FFAA00", "pm25": "#FF4444"},
+          title="🌫️ 계절별 미세먼지 및 초미세먼지 평균 변화",
+          text_auto=".1f",
+      )
+      fig_air_season.update_layout(
+          height=420,
+          hovermode="x unified",
+          legend=dict(
+              orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+          ),
+      )
+      st.plotly_chart(fig_air_season, use_container_width=True)
 
   with row2_col2:
-    df_season_rain = (
-        df.groupby("season")
-        .agg({"rainfall": "sum", "solar_radiation": "mean"})
-        .reset_index()
-    )
-    fig_rain_season = make_subplots(specs=[[{"secondary_y": True}]])
-    fig_rain_season.add_trace(
-        go.Bar(
-            x=df_season_rain["season"],
-            y=df_season_rain["rainfall"],
-            name="총 강수량 (mm)",
-            marker_color="#29B6F6",
-            text=df_season_rain["rainfall"].round(1),
-            textposition="auto",
-        ),
-        secondary_y=False,
-    )
-    fig_rain_season.add_trace(
-        go.Scatter(
-            x=df_season_rain["season"],
-            y=df_season_rain["solar_radiation"],
-            name="평균 일사량 (MJ/㎡)",
-            line=dict(color="#FFA726", width=3),
-            mode="lines+markers+text",
-            text=df_season_rain["solar_radiation"].round(2),
-            textposition="top center",
-        ),
-        secondary_y=True,
-    )
-    fig_rain_season.update_layout(
-        title="🌧️☀️ 계절별 기상 통계 (총 강수량 vs 평균 일사량)",
-        xaxis_title="계절",
-        height=420,
-        hovermode="x unified",
-        legend=dict(
-            orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
-        ),
-    )
-    fig_rain_season.update_yaxes(title_text="강수량 (mm)", secondary_y=False)
-    fig_rain_season.update_yaxes(title_text="일사량 (MJ/㎡)", secondary_y=True)
-    st.plotly_chart(fig_rain_season, use_container_width=True)
+    if "rainfall" in df.columns and "solar_radiation" in df.columns:
+      df_season_rain = (
+          df.groupby("season")
+          .agg({"rainfall": "sum", "solar_radiation": "mean"})
+          .reset_index()
+      )
+      fig_rain_season = make_subplots(specs=[[{"secondary_y": True}]])
+      fig_rain_season.add_trace(
+          go.Bar(
+              x=df_season_rain["season"],
+              y=df_season_rain["rainfall"],
+              name="총 강수량 (mm)",
+              marker_color="#29B6F6",
+              text=df_season_rain["rainfall"].round(1),
+              textposition="auto",
+          ),
+          secondary_y=False,
+      )
+      fig_rain_season.add_trace(
+          go.Scatter(
+              x=df_season_rain["season"],
+              y=df_season_rain["solar_radiation"],
+              name="평균 일사량 (MJ/㎡)",
+              line=dict(color="#FFA726", width=3),
+              mode="lines+markers+text",
+              text=df_season_rain["solar_radiation"].round(2),
+              textposition="top center",
+          ),
+          secondary_y=True,
+      )
+      fig_rain_season.update_layout(
+          title="🌧️☀️ 계절별 기상 통계 (총 강수량 vs 평균 일사량)",
+          xaxis_title="계절",
+          height=420,
+          hovermode="x unified",
+          legend=dict(
+              orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+          ),
+      )
+      fig_rain_season.update_yaxes(title_text="강수량 (mm)", secondary_y=False)
+      fig_rain_season.update_yaxes(title_text="일사량 (MJ/㎡)", secondary_y=True)
+      st.plotly_chart(fig_rain_season, use_container_width=True)
 
   # 데이터 미리보기
   st.markdown("---")
