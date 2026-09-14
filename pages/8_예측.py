@@ -1,269 +1,1754 @@
-import datetime
-import os
+from __future__ import annotations
+
+from pathlib import Path
+import json
+
 import joblib
+import numpy as np
 import pandas as pd
-import requests
+import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
-st.set_page_config(page_title="영천시 전체 문화재 위험도 예측", layout="wide")
 
-st.title("🏛️ 영천시 전체 문화재 실시간 위험도 예측 시스템")
-st.markdown("##### 📌 `data/processed/yc_heritage_feature.csv`의 105개 문화재 목록과 최신 기상청 데이터를 연동하여 위험도를 일괄 예측합니다.")
+# ============================================================
+# 1. 페이지 설정
+# ============================================================
 
+st.set_page_config(
+    page_title="문화유산 환경 취약도 예측",
+    page_icon="🏛️",
+    layout="wide",
+)
 
-@st.cache_resource
-def load_model_and_heritage():
-    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    model_path = os.path.join(root_dir, "best_rf_model.pkl")
-    features_path = os.path.join(root_dir, "model_features.pkl")
-    heritage_csv_path = os.path.join(root_dir, "data", "processed", "yc_heritage_feature.csv")
+st.title("🏛️ 영천 문화유산 환경 취약도 예측")
+st.caption(
+    "최근 40일 환경 데이터와 학습된 분류모델을 이용하여 "
+    "문화유산별 환경 취약도를 안전·주의·위험으로 예측합니다."
+)
 
-    try:
-        model = joblib.load(model_path)
-        features = joblib.load(features_path)
-    except FileNotFoundError:
-        return None, None, None
-
-    try:
-        # 105개 문화재 정보 파일 로드
-        heritage_df = pd.read_csv(heritage_csv_path)
-    except Exception as e:
-        heritage_df = None
-        st.error(f"문화재 기본 정보 파일(`yc_heritage_feature.csv`) 로드 실패: {e}")
-
-    return model, features, heritage_df
+st.info(
+    "📌 이 페이지의 '위험'은 실제 문화재 훼손 발생을 의미하지 않습니다. "
+    "문헌 기반 환경조건과 프로젝트에서 정의한 상대 가중치를 이용해 만든 "
+    "환경 취약도 등급을 분류한 결과입니다."
+)
 
 
-model, feature_cols, heritage_df = load_model_and_heritage()
+# ============================================================
+# 2. 화면 디자인
+# ============================================================
 
-if model is None:
-    st.warning(
-        "⚠️ 학습된 모델이 존재하지 않습니다. 먼저 사이드바에서 **[7_위험 예측 분류 모델 학습 최적화]** 페이지로 이동해 모델 학습을 완료해 주세요!"
+st.markdown(
+    """
+    <style>
+    .prediction-hero {
+        padding: 18px 22px;
+        border-radius: 18px;
+        border: 1px solid rgba(128,128,128,0.22);
+        background: linear-gradient(
+            135deg,
+            rgba(52,152,219,0.08),
+            rgba(155,89,182,0.07)
+        );
+        margin-bottom: 14px;
+    }
+
+    .prediction-hero h3 {
+        margin: 0 0 6px 0;
+        font-size: 1.25rem;
+    }
+
+    .prediction-hero p {
+        margin: 0;
+        opacity: 0.82;
+    }
+
+    .risk-safe {
+        border-left: 6px solid #2ecc71;
+        padding: 10px 14px;
+        border-radius: 10px;
+        background: rgba(46,204,113,0.08);
+    }
+
+    .risk-caution {
+        border-left: 6px solid #f39c12;
+        padding: 10px 14px;
+        border-radius: 10px;
+        background: rgba(243,156,18,0.08);
+    }
+
+    .risk-danger {
+        border-left: 6px solid #e74c3c;
+        padding: 10px 14px;
+        border-radius: 10px;
+        background: rgba(231,76,60,0.08);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ============================================================
+# 3. 파일 경로
+# ============================================================
+
+MODEL_DIR = Path("models")
+DATA_DIR = Path("data/processed")
+
+MODEL_PATH = MODEL_DIR / "best_model.pkl"
+FEATURE_COLS_PATH = MODEL_DIR / "feature_cols.pkl"
+MODEL_META_PATH = MODEL_DIR / "model_metadata.json"
+
+HERITAGE_CANDIDATES = [
+    DATA_DIR / "영천_문화재_특성데이터셋.csv",
+    DATA_DIR / "yc_heritage_feature.csv",
+    DATA_DIR / "yc_heritage_detail_enriched.csv",
+    DATA_DIR / "yc_heritage_features.csv",
+]
+
+
+# ============================================================
+# 4. 상수
+# ============================================================
+
+GRADE_ORDER = ["안전", "주의", "위험"]
+
+GRADE_COLOR = {
+    "안전": "#2ECC71",
+    "주의": "#F39C12",
+    "위험": "#E74C3C",
+}
+
+MATERIAL_ORDER = [
+    "석조",
+    "목조",
+    "금속",
+    "회화",
+    "기타",
+]
+
+EXPOSURE_ORDER = [
+    "실외",
+    "반실외",
+    "실내",
+]
+
+
+# ============================================================
+# 5. 유틸리티
+# ============================================================
+
+def find_heritage_path() -> Path:
+    for path in HERITAGE_CANDIDATES:
+        if path.exists():
+            return path
+
+    raise FileNotFoundError(
+        "문화유산 특성 데이터 파일을 찾을 수 없습니다.\n"
+        "다음 중 하나의 파일이 필요합니다:\n"
+        + "\n".join(
+            f"- {path}"
+            for path in HERITAGE_CANDIDATES
+        )
+    )
+
+
+@st.cache_resource(show_spinner=False)
+def load_model_assets():
+    if not MODEL_PATH.exists():
+        raise FileNotFoundError(
+            f"최종 모델 파일이 없습니다: {MODEL_PATH}\n"
+            "'위험 예측 분류 모델 학습' 페이지에서 먼저 모델을 학습하세요."
+        )
+
+    if not FEATURE_COLS_PATH.exists():
+        raise FileNotFoundError(
+            f"Feature 목록 파일이 없습니다: {FEATURE_COLS_PATH}"
+        )
+
+    model = joblib.load(
+        MODEL_PATH
+    )
+
+    feature_cols = joblib.load(
+        FEATURE_COLS_PATH
+    )
+
+    metadata = {}
+
+    if MODEL_META_PATH.exists():
+        try:
+            metadata = json.loads(
+                MODEL_META_PATH.read_text(
+                    encoding="utf-8"
+                )
+            )
+        except Exception:
+            metadata = {}
+
+    return model, feature_cols, metadata
+
+
+@st.cache_data(show_spinner=False)
+def load_heritage_data(
+    heritage_path_str: str,
+) -> pd.DataFrame:
+
+    heritage = pd.read_csv(
+        heritage_path_str,
+        encoding="utf-8-sig",
+    )
+
+    rename_candidates = {
+        "문화재명(국문)": "heritage_name",
+        "문화재명": "heritage_name",
+        "국가유산명": "heritage_name",
+        "유산명": "heritage_name",
+
+        "재질": "material",
+        "재질분류": "material",
+
+        "노출형태": "exposure",
+        "노출환경": "exposure",
+
+        "위도": "latitude",
+        "위도(latitude)": "latitude",
+        "latitude": "latitude",
+        "lat": "latitude",
+
+        "경도": "longitude",
+        "경도(longitude)": "longitude",
+        "longitude": "longitude",
+        "lon": "longitude",
+        "lng": "longitude",
+
+        "소재지": "address",
+        "주소": "address",
+        "소재지도로명주소": "address",
+
+        "종목": "heritage_type",
+        "문화재종목": "heritage_type",
+        "국가유산종목": "heritage_type",
+    }
+
+    for old_col, new_col in rename_candidates.items():
+        if (
+            old_col in heritage.columns
+            and new_col not in heritage.columns
+        ):
+            heritage = heritage.rename(
+                columns={
+                    old_col: new_col
+                }
+            )
+
+    required = [
+        "heritage_name",
+        "material",
+        "exposure",
+    ]
+
+    missing = [
+        col
+        for col in required
+        if col not in heritage.columns
+    ]
+
+    if missing:
+        raise ValueError(
+            "문화유산 데이터에 필요한 컬럼이 없습니다: "
+            f"{missing}\n\n"
+            "필요 컬럼: 문화재명, 재질, 노출형태"
+        )
+
+    heritage["heritage_name"] = (
+        heritage["heritage_name"]
+        .astype(str)
+        .str.strip()
+    )
+
+    heritage["material"] = (
+        heritage["material"]
+        .astype(str)
+        .str.strip()
+        .replace(
+            {
+                "벽화": "회화",
+                "그림": "회화",
+                "회화류": "회화",
+            }
+        )
+    )
+
+    heritage["material"] = heritage[
+        "material"
+    ].where(
+        heritage["material"].isin(
+            MATERIAL_ORDER
+        ),
+        "기타",
+    )
+
+    heritage["exposure"] = (
+        heritage["exposure"]
+        .astype(str)
+        .str.strip()
+        .replace(
+            {
+                "옥외": "실외",
+                "야외": "실외",
+                "반옥외": "반실외",
+                "옥내": "실내",
+            }
+        )
+    )
+
+    heritage["exposure"] = heritage[
+        "exposure"
+    ].where(
+        heritage["exposure"].isin(
+            EXPOSURE_ORDER
+        ),
+        "실외",
+    )
+
+    if "latitude" in heritage.columns:
+        heritage["latitude"] = pd.to_numeric(
+            heritage["latitude"],
+            errors="coerce",
+        )
+
+    if "longitude" in heritage.columns:
+        heritage["longitude"] = pd.to_numeric(
+            heritage["longitude"],
+            errors="coerce",
+        )
+
+    return (
+        heritage
+        .drop_duplicates(
+            subset=["heritage_name"],
+            keep="first",
+        )
+        .reset_index(drop=True)
+    )
+
+
+def get_recent_environment():
+    """
+    바로 앞 '전일~40일전 데이터' 페이지에서 만든
+    session_state 데이터를 읽는다.
+    """
+
+    realtime_df = st.session_state.get(
+        "recent_40_environment"
+    )
+
+    target_date = st.session_state.get(
+        "recent_40_target_date"
+    )
+
+    if (
+        realtime_df is None
+        or target_date is None
+    ):
+        return None, None
+
+    if not isinstance(
+        realtime_df,
+        pd.DataFrame,
+    ):
+        return None, None
+
+    realtime_df = realtime_df.copy()
+
+    realtime_df["date"] = pd.to_datetime(
+        realtime_df["date"],
+        errors="coerce",
+    )
+
+    return realtime_df, target_date
+
+
+def select_target_environment(
+    realtime_df: pd.DataFrame,
+    target_date,
+) -> pd.DataFrame:
+    """
+    지정한 기준일의 환경 데이터만 정확히 선택.
+    이전 날짜를 임의로 대신 사용하지 않는다.
+    """
+
+    target_ts = pd.Timestamp(
+        target_date
+    ).floor("D")
+
+    target_rows = realtime_df.loc[
+        realtime_df["date"].dt.floor("D")
+        == target_ts
+    ]
+
+    if target_rows.empty:
+        raise ValueError(
+            f"{target_ts:%Y-%m-%d} 기준일의 "
+            "환경 Feature가 없습니다."
+        )
+
+    return (
+        target_rows
+        .tail(1)
+        .reset_index(drop=True)
+    )
+
+
+def combine_environment_and_heritage(
+    target_environment: pd.DataFrame,
+    heritage_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    기준일 환경 1행 × 문화유산 전체.
+    """
+
+    env_row = (
+        target_environment
+        .iloc[0]
+        .to_dict()
+    )
+
+    rows = []
+
+    for _, heritage_row in heritage_df.iterrows():
+        combined = dict(
+            env_row
+        )
+
+        for col in heritage_df.columns:
+            combined[col] = heritage_row[
+                col
+            ]
+
+        rows.append(
+            combined
+        )
+
+    return pd.DataFrame(
+        rows
+    )
+
+
+def build_inference_features(
+    prediction_df: pd.DataFrame,
+    feature_cols: list[str],
+) -> pd.DataFrame:
+    """
+    학습 시 저장한 feature_cols와 완전히 동일한 열 순서로 변환.
+    """
+
+    work = prediction_df.copy()
+
+    # 범주형 Feature를 학습과 동일하게 One-Hot
+    categorical_cols = [
+        col
+        for col in [
+            "material",
+            "exposure",
+            "season",
+        ]
+        if col in work.columns
+    ]
+
+    work = pd.get_dummies(
+        work,
+        columns=categorical_cols,
+        dtype=int,
+    )
+
+    # 모델이 요구하는 열만 정확히 맞춤
+    X = work.reindex(
+        columns=feature_cols,
+        fill_value=0,
+    )
+
+    # 모든 열을 숫자형으로 보장
+    for col in X.columns:
+        X[col] = pd.to_numeric(
+            X[col],
+            errors="coerce",
+        )
+
+    missing_cols = (
+        X.columns[
+            X.isna().any()
+        ]
+        .tolist()
+    )
+
+    if missing_cols:
+        raise ValueError(
+            "예측 Feature에 결측값이 남아 있습니다: "
+            f"{missing_cols}"
+        )
+
+    return X
+
+
+def get_class_probability(
+    model,
+    probability_matrix: np.ndarray,
+    class_name: str,
+) -> np.ndarray:
+    """
+    model.classes_ 순서와 무관하게 원하는 등급 확률 반환.
+    해당 등급이 모델에 없다면 0 반환.
+    """
+
+    classes = list(
+        model.classes_
+    )
+
+    if class_name not in classes:
+        return np.zeros(
+            probability_matrix.shape[0]
+        )
+
+    class_idx = classes.index(
+        class_name
+    )
+
+    return probability_matrix[
+        :,
+        class_idx,
+    ]
+
+
+def run_prediction(
+    model,
+    feature_cols: list[str],
+    prediction_df: pd.DataFrame,
+) -> pd.DataFrame:
+
+    X = build_inference_features(
+        prediction_df,
+        feature_cols,
+    )
+
+    predicted = model.predict(
+        X
+    )
+
+    result = prediction_df.copy()
+
+    result[
+        "predicted_grade"
+    ] = predicted
+
+    if hasattr(
+        model,
+        "predict_proba",
+    ):
+        probabilities = model.predict_proba(
+            X
+        )
+
+        result[
+            "safe_probability"
+        ] = (
+            get_class_probability(
+                model,
+                probabilities,
+                "안전",
+            )
+            * 100
+        )
+
+        result[
+            "caution_probability"
+        ] = (
+            get_class_probability(
+                model,
+                probabilities,
+                "주의",
+            )
+            * 100
+        )
+
+        result[
+            "danger_probability"
+        ] = (
+            get_class_probability(
+                model,
+                probabilities,
+                "위험",
+            )
+            * 100
+        )
+
+    else:
+        result["safe_probability"] = np.where(
+            result["predicted_grade"] == "안전",
+            100.0,
+            0.0,
+        )
+
+        result["caution_probability"] = np.where(
+            result["predicted_grade"] == "주의",
+            100.0,
+            0.0,
+        )
+
+        result["danger_probability"] = np.where(
+            result["predicted_grade"] == "위험",
+            100.0,
+            0.0,
+        )
+
+    # "주의 이상 가능성"은 관심 순위를 위한 보조 지표
+    result[
+        "attention_probability"
+    ] = (
+        result[
+            "caution_probability"
+        ]
+        + result[
+            "danger_probability"
+        ]
+    )
+
+    # 0~100의 시각화용 종합 점수
+    # 안전=0, 주의=50, 위험=100으로 확률 가중
+    result[
+        "risk_index"
+    ] = (
+        result[
+            "caution_probability"
+        ]
+        * 0.5
+        + result[
+            "danger_probability"
+        ]
+    ).clip(
+        0,
+        100,
+    )
+
+    return result
+
+
+def make_display_result(
+    result_df: pd.DataFrame,
+) -> pd.DataFrame:
+
+    columns = [
+        "heritage_name",
+        "material",
+        "exposure",
+        "predicted_grade",
+        "risk_index",
+        "safe_probability",
+        "caution_probability",
+        "danger_probability",
+        "attention_probability",
+    ]
+
+    for optional in [
+        "heritage_type",
+        "address",
+        "latitude",
+        "longitude",
+    ]:
+        if optional in result_df.columns:
+            columns.append(
+                optional
+            )
+
+    display = (
+        result_df[
+            columns
+        ]
+        .copy()
+        .sort_values(
+            [
+                "risk_index",
+                "danger_probability",
+            ],
+            ascending=False,
+        )
+        .reset_index(drop=True)
+    )
+
+    return display
+
+
+# ============================================================
+# 6. 모델 / 최근 40일 / 문화유산 데이터 준비
+# ============================================================
+
+try:
+    model, feature_cols, metadata = (
+        load_model_assets()
+    )
+
+except Exception as e:
+    st.error(
+        f"❌ 모델 로드 실패: {e}"
     )
     st.stop()
 
-if heritage_df is None:
+
+realtime_df, target_date = (
+    get_recent_environment()
+)
+
+if realtime_df is None:
+
+    st.warning(
+        "⚠️ 최근 40일 예측용 환경 데이터가 없습니다."
+    )
+
+    st.markdown(
+        """
+        <div class="prediction-hero">
+            <h3>먼저 '전일~40일전 데이터' 페이지를 실행하세요.</h3>
+            <p>
+                최근 40일 기상·대기환경 데이터를 불러온 뒤
+                이 페이지로 이동하면 동일한 세션의 데이터를 자동으로 사용합니다.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.stop()
 
-ASOS_SERVICE_KEY = (
-    "feb2bfabd299d5d05e89c7aec49ba7e706112603e76549a92e868bd86ec60323"
+
+try:
+    heritage_path = find_heritage_path()
+
+    heritage_df = load_heritage_data(
+        str(heritage_path)
+    )
+
+except Exception as e:
+    st.error(
+        f"❌ 문화유산 데이터 로드 실패: {e}"
+    )
+    st.stop()
+
+
+# ============================================================
+# 7. 상단 상태 영역
+# ============================================================
+
+target_ts = pd.Timestamp(
+    target_date
 )
-ASOS_URL = (
-    "http://apis.data.go.kr/1360000/AsosDalyInfoService/getWthrDataList"
+
+model_name = metadata.get(
+    "model_name",
+    type(model).__name__,
 )
-STN_ID = "281"  # 영천 관측소
+
+st.markdown(
+    f"""
+    <div class="prediction-hero">
+        <h3>🤖 예측 준비 완료</h3>
+        <p>
+            기준일 <b>{target_ts:%Y-%m-%d}</b> ·
+            문화유산 <b>{len(heritage_df):,}개</b> ·
+            모델 <b>{model_name}</b> ·
+            Feature <b>{len(feature_cols):,}개</b>
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 
-def fetch_latest_prediction_data():
-    # 데이터 집계 지연을 고려하여 2일 전부터 최근 12일간의 데이터를 조회
-    today = datetime.date.today() - datetime.timedelta(days=2)
-    start_date = today - datetime.timedelta(days=12)
-    start_str = start_date.strftime("%Y%m%d")
-    end_str = today.strftime("%Y%m%d")
+top1, top2, top3, top4 = st.columns(
+    4
+)
 
-    params = {
-        "serviceKey": ASOS_SERVICE_KEY,
-        "numOfRows": "20",
-        "pageNo": "1",
-        "dataType": "JSON",
-        "dataCd": "ASOS",
-        "dateCd": "DAY",
-        "startDt": start_str,
-        "endDt": end_str,
-        "stnIds": STN_ID,
-    }
+top1.metric(
+    "📅 예측 기준일",
+    f"{target_ts:%Y-%m-%d}",
+)
+
+top2.metric(
+    "🏛️ 분석 문화유산",
+    f"{len(heritage_df):,}개",
+)
+
+top3.metric(
+    "🤖 적용 모델",
+    model_name,
+)
+
+top4.metric(
+    "🧩 모델 Feature",
+    f"{len(feature_cols):,}개",
+)
+
+
+# ============================================================
+# 8. 예측 실행
+# ============================================================
+
+if "heritage_prediction_result" not in st.session_state:
+    st.session_state.heritage_prediction_result = None
+
+if "heritage_prediction_date" not in st.session_state:
+    st.session_state.heritage_prediction_date = None
+
+
+run_clicked = st.button(
+    "🚀 문화유산 환경 취약도 예측 실행",
+    type="primary",
+    use_container_width=True,
+)
+
+
+if run_clicked:
+
     try:
-        response = requests.get(ASOS_URL, params=params, timeout=30)
-        res_json = response.json()
+        status = st.status(
+            "문화유산 환경 취약도 예측 준비 중...",
+            expanded=True,
+        )
+
+        status.update(
+            label="📌 기준일 환경 Feature 선택 중...",
+            state="running",
+        )
+
+        target_environment = (
+            select_target_environment(
+                realtime_df,
+                target_date,
+            )
+        )
+
+        status.update(
+            label="🏛️ 환경 데이터와 문화유산 특성 결합 중...",
+            state="running",
+        )
+
+        prediction_input = (
+            combine_environment_and_heritage(
+                target_environment,
+                heritage_df,
+            )
+        )
+
+        status.update(
+            label="🤖 학습 모델로 문화유산별 등급 예측 중...",
+            state="running",
+        )
+
+        result_df = run_prediction(
+            model,
+            feature_cols,
+            prediction_input,
+        )
+
+        result_df = make_display_result(
+            result_df
+        )
+
+        st.session_state.heritage_prediction_result = (
+            result_df
+        )
+
+        st.session_state.heritage_prediction_date = (
+            target_date
+        )
+
+        # 메인 대시보드에서 사용할 수 있도록 저장
+        st.session_state["danger_count"] = int(
+            (
+                result_df[
+                    "predicted_grade"
+                ]
+                == "위험"
+            )
+            .sum()
+        )
+
+        status.update(
+            label="✅ 문화유산별 환경 취약도 예측 완료",
+            state="complete",
+            expanded=False,
+        )
+
+        st.rerun()
+
+    except Exception as e:
+        st.error(
+            f"❌ 예측 실행 실패: {e}"
+        )
+
+
+# ============================================================
+# 9. 예측 결과
+# ============================================================
+
+result_df = (
+    st.session_state
+    .heritage_prediction_result
+)
+
+prediction_date = (
+    st.session_state
+    .heritage_prediction_date
+)
+
+
+if result_df is None:
+
+    st.markdown("---")
+
+    st.markdown(
+        """
+        <div class="prediction-hero">
+            <h3>예측 실행 버튼을 눌러 결과를 확인하세요.</h3>
+            <p>
+                모델은 최근 40일 환경 파생변수와 각 문화유산의
+                재질·노출환경을 결합하여 안전·주의·위험 등급을 분류합니다.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.stop()
+
+
+# ============================================================
+# 10. 결과 요약
+# ============================================================
+
+st.markdown("---")
+
+st.subheader(
+    f"📊 {pd.Timestamp(prediction_date):%Y-%m-%d} "
+    "문화유산 환경 취약도 예측 결과"
+)
+
+total_count = len(
+    result_df
+)
+
+safe_count = int(
+    (
+        result_df[
+            "predicted_grade"
+        ]
+        == "안전"
+    )
+    .sum()
+)
+
+caution_count = int(
+    (
+        result_df[
+            "predicted_grade"
+        ]
+        == "주의"
+    )
+    .sum()
+)
+
+danger_count = int(
+    (
+        result_df[
+            "predicted_grade"
+        ]
+        == "위험"
+    )
+    .sum()
+)
+
+attention_count = (
+    caution_count
+    + danger_count
+)
+
+
+k1, k2, k3, k4 = st.columns(
+    4
+)
+
+k1.metric(
+    "🏛️ 전체 분석",
+    f"{total_count:,}개",
+)
+
+k2.metric(
+    "✅ 안전",
+    f"{safe_count:,}개",
+    (
+        f"{safe_count / total_count * 100:.1f}%"
+        if total_count
+        else "0%"
+    ),
+)
+
+k3.metric(
+    "⚠️ 주의",
+    f"{caution_count:,}개",
+    (
+        f"{caution_count / total_count * 100:.1f}%"
+        if total_count
+        else "0%"
+    ),
+)
+
+k4.metric(
+    "🚨 위험",
+    f"{danger_count:,}개",
+    (
+        f"{danger_count / total_count * 100:.1f}%"
+        if total_count
+        else "0%"
+    ),
+)
+
+
+if danger_count > 0:
+
+    st.markdown(
+        f"""
+        <div class="risk-danger">
+            <b>🚨 위험 등급 {danger_count}개</b><br>
+            현재 모델에서 위험 등급으로 분류된 문화유산을
+            우선 점검 대상으로 확인할 수 있습니다.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+elif caution_count > 0:
+
+    st.markdown(
+        f"""
+        <div class="risk-caution">
+            <b>⚠️ 주의 등급 {caution_count}개</b><br>
+            위험 등급은 없지만 주의 등급 문화유산이 있습니다.
+            상위 순위 문화유산의 환경조건을 함께 확인하세요.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+else:
+
+    st.markdown(
+        """
+        <div class="risk-safe">
+            <b>✅ 현재 모델에서 모두 안전 등급으로 분류되었습니다.</b><br>
+            이는 실제 훼손 가능성이 없다는 의미가 아니라,
+            현재 학습된 분류모델의 환경 취약도 기준에 따른 결과입니다.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# ============================================================
+# 11. 메인 시각화
+# ============================================================
+
+st.markdown("---")
+st.subheader("🎨 한눈에 보는 예측 결과")
+
+left_chart, right_chart = st.columns(
+    [0.9, 1.3]
+)
+
+# ------------------------------------------------------------
+# 11-1. 등급 분포 Donut
+# ------------------------------------------------------------
+
+with left_chart:
+
+    grade_counts = (
+        result_df[
+            "predicted_grade"
+        ]
+        .value_counts()
+        .reindex(
+            GRADE_ORDER,
+            fill_value=0,
+        )
+        .rename_axis("등급")
+        .reset_index(
+            name="문화유산 수"
+        )
+    )
+
+    fig_grade = px.pie(
+        grade_counts,
+        names="등급",
+        values="문화유산 수",
+        color="등급",
+        color_discrete_map=GRADE_COLOR,
+        hole=0.62,
+        title="안전·주의·위험 등급 분포",
+    )
+
+    fig_grade.update_traces(
+        textposition="inside",
+        textinfo="label+percent",
+        hovertemplate=(
+            "<b>%{label}</b><br>"
+            "문화유산 %{value}개<br>"
+            "%{percent}<extra></extra>"
+        ),
+    )
+
+    fig_grade.add_annotation(
+        text=f"<b>{total_count}</b><br>문화유산",
+        x=0.5,
+        y=0.5,
+        showarrow=False,
+        font=dict(
+            size=20
+        ),
+    )
+
+    fig_grade.update_layout(
+        height=470,
+        margin=dict(
+            t=70,
+            b=20,
+            l=20,
+            r=20,
+        ),
+        legend=dict(
+            orientation="h",
+            y=-0.08,
+        ),
+    )
+
+    st.plotly_chart(
+        fig_grade,
+        use_container_width=True,
+    )
+
+
+# ------------------------------------------------------------
+# 11-2. 관심도 TOP 15
+# ------------------------------------------------------------
+
+with right_chart:
+
+    top_n = min(
+        15,
+        len(result_df),
+    )
+
+    top_attention = (
+        result_df
+        .nlargest(
+            top_n,
+            "risk_index",
+        )
+        .sort_values(
+            "risk_index",
+            ascending=True,
+        )
+        .copy()
+    )
+
+    fig_top = px.bar(
+        top_attention,
+        x="risk_index",
+        y="heritage_name",
+        orientation="h",
+        color="predicted_grade",
+        color_discrete_map=GRADE_COLOR,
+        text="risk_index",
+        title=f"환경 취약도 관심순위 TOP {top_n}",
+        labels={
+            "risk_index": "환경 취약도 지수",
+            "heritage_name": "",
+            "predicted_grade": "예측 등급",
+        },
+    )
+
+    fig_top.update_traces(
+        texttemplate="%{text:.1f}",
+        textposition="outside",
+        cliponaxis=False,
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "환경 취약도 지수 %{x:.1f}<extra></extra>"
+        ),
+    )
+
+    fig_top.update_layout(
+        height=470,
+        xaxis_range=[0, 105],
+        margin=dict(
+            t=70,
+            b=30,
+            l=20,
+            r=40,
+        ),
+    )
+
+    st.plotly_chart(
+        fig_top,
+        use_container_width=True,
+    )
+
+
+# ============================================================
+# 12. 재질별 / 노출환경별 분석
+# ============================================================
+
+st.markdown("---")
+st.subheader("🏛️ 재질·노출환경별 취약도 비교")
+
+material_col, exposure_col = st.columns(
+    2
+)
+
+# ------------------------------------------------------------
+# 12-1. 재질별 등급
+# ------------------------------------------------------------
+
+with material_col:
+
+    material_summary = (
+        result_df
+        .groupby(
+            [
+                "material",
+                "predicted_grade",
+            ]
+        )
+        .size()
+        .reset_index(
+            name="문화유산 수"
+        )
+    )
+
+    fig_material = px.bar(
+        material_summary,
+        x="material",
+        y="문화유산 수",
+        color="predicted_grade",
+        color_discrete_map=GRADE_COLOR,
+        category_orders={
+            "material": MATERIAL_ORDER,
+            "predicted_grade": GRADE_ORDER,
+        },
+        barmode="stack",
+        title="재질별 안전·주의·위험 분포",
+        labels={
+            "material": "재질",
+            "predicted_grade": "예측 등급",
+        },
+    )
+
+    fig_material.update_layout(
+        height=420,
+        legend_title_text="예측 등급",
+    )
+
+    st.plotly_chart(
+        fig_material,
+        use_container_width=True,
+    )
+
+
+# ------------------------------------------------------------
+# 12-2. 노출환경별 평균 취약도
+# ------------------------------------------------------------
+
+with exposure_col:
+
+    exposure_summary = (
+        result_df
+        .groupby(
+            "exposure",
+            as_index=False,
+        )
+        .agg(
+            평균_취약도=(
+                "risk_index",
+                "mean",
+            ),
+            문화유산_수=(
+                "heritage_name",
+                "count",
+            ),
+        )
+    )
+
+    fig_exposure = px.bar(
+        exposure_summary,
+        x="exposure",
+        y="평균_취약도",
+        text="평균_취약도",
+        category_orders={
+            "exposure": EXPOSURE_ORDER,
+        },
+        title="노출환경별 평균 환경 취약도",
+        labels={
+            "exposure": "노출환경",
+            "평균_취약도": "평균 환경 취약도 지수",
+        },
+    )
+
+    fig_exposure.update_traces(
+        texttemplate="%{text:.1f}",
+        textposition="outside",
+    )
+
+    fig_exposure.update_layout(
+        height=420,
+        yaxis_range=[0, 100],
+    )
+
+    st.plotly_chart(
+        fig_exposure,
+        use_container_width=True,
+    )
+
+
+# ============================================================
+# 13. 지도 시각화
+# ============================================================
+
+if (
+    "latitude" in result_df.columns
+    and "longitude" in result_df.columns
+):
+
+    map_df = result_df.dropna(
+        subset=[
+            "latitude",
+            "longitude",
+        ]
+    ).copy()
+
+    if not map_df.empty:
+
+        st.markdown("---")
+        st.subheader("🗺️ 문화유산 환경 취약도 공간 분포")
+
+        map_df[
+            "표시크기"
+        ] = (
+            map_df[
+                "risk_index"
+            ]
+            .clip(
+                lower=5,
+                upper=100,
+            )
+        )
+
+        fig_map = px.scatter_map(
+            map_df,
+            lat="latitude",
+            lon="longitude",
+            color="predicted_grade",
+            size="표시크기",
+            color_discrete_map=GRADE_COLOR,
+            hover_name="heritage_name",
+            hover_data={
+                "material": True,
+                "exposure": True,
+                "risk_index": ":.1f",
+                "danger_probability": ":.1f",
+                "latitude": False,
+                "longitude": False,
+                "표시크기": False,
+            },
+            zoom=9,
+            height=600,
+            labels={
+                "material": "재질",
+                "exposure": "노출환경",
+                "risk_index": "환경 취약도 지수",
+                "danger_probability": "위험 확률(%)",
+                "predicted_grade": "예측 등급",
+            },
+        )
+
+        fig_map.update_layout(
+            map_style="open-street-map",
+            margin=dict(
+                t=10,
+                b=10,
+                l=10,
+                r=10,
+            ),
+            legend=dict(
+                orientation="h",
+                y=1.02,
+            ),
+        )
+
+        st.plotly_chart(
+            fig_map,
+            use_container_width=True,
+        )
+
+
+# ============================================================
+# 14. 문화유산별 상세 결과
+# ============================================================
+
+st.markdown("---")
+st.subheader("🔎 문화유산별 예측 결과 상세")
+
+filter1, filter2, filter3 = st.columns(
+    [1, 1, 1.4]
+)
+
+with filter1:
+    selected_grade = st.multiselect(
+        "예측 등급",
+        options=GRADE_ORDER,
+        default=GRADE_ORDER,
+    )
+
+with filter2:
+    selected_materials = st.multiselect(
+        "재질",
+        options=[
+            x
+            for x in MATERIAL_ORDER
+            if x in result_df[
+                "material"
+            ].unique()
+        ],
+        default=[
+            x
+            for x in MATERIAL_ORDER
+            if x in result_df[
+                "material"
+            ].unique()
+        ],
+    )
+
+with filter3:
+    keyword = st.text_input(
+        "문화유산명 검색",
+        placeholder="문화유산 이름 일부를 입력하세요.",
+    )
+
+
+filtered_result = result_df[
+    result_df[
+        "predicted_grade"
+    ].isin(
+        selected_grade
+    )
+    &
+    result_df[
+        "material"
+    ].isin(
+        selected_materials
+    )
+].copy()
+
+
+if keyword.strip():
+    filtered_result = filtered_result[
+        filtered_result[
+            "heritage_name"
+        ]
+        .str.contains(
+            keyword.strip(),
+            case=False,
+            na=False,
+        )
+    ]
+
+
+table_cols = [
+    "heritage_name",
+    "material",
+    "exposure",
+    "predicted_grade",
+    "risk_index",
+    "attention_probability",
+    "safe_probability",
+    "caution_probability",
+    "danger_probability",
+]
+
+for optional in [
+    "heritage_type",
+    "address",
+]:
+    if optional in filtered_result.columns:
+        table_cols.append(
+            optional
+        )
+
+
+table_df = filtered_result[
+    table_cols
+].copy()
+
+
+rename_map = {
+    "heritage_name": "문화유산명",
+    "material": "재질",
+    "exposure": "노출환경",
+    "predicted_grade": "예측 등급",
+    "risk_index": "환경 취약도 지수",
+    "attention_probability": "주의 이상 확률(%)",
+    "safe_probability": "안전 확률(%)",
+    "caution_probability": "주의 확률(%)",
+    "danger_probability": "위험 확률(%)",
+    "heritage_type": "국가유산 종목",
+    "address": "소재지",
+}
+
+table_df = table_df.rename(
+    columns=rename_map
+)
+
+
+st.dataframe(
+    table_df,
+    use_container_width=True,
+    height=560,
+    hide_index=True,
+    column_config={
+        "환경 취약도 지수": st.column_config.ProgressColumn(
+            "환경 취약도 지수",
+            min_value=0,
+            max_value=100,
+            format="%.1f",
+        ),
+        "주의 이상 확률(%)": st.column_config.ProgressColumn(
+            "주의 이상 확률(%)",
+            min_value=0,
+            max_value=100,
+            format="%.1f%%",
+        ),
+        "위험 확률(%)": st.column_config.ProgressColumn(
+            "위험 확률(%)",
+            min_value=0,
+            max_value=100,
+            format="%.1f%%",
+        ),
+    },
+)
+
+
+# ============================================================
+# 15. 우선 확인 문화유산
+# ============================================================
+
+st.markdown("---")
+st.subheader("🚨 우선 확인 문화유산")
+
+attention_view = (
+    result_df[
+        result_df[
+            "predicted_grade"
+        ].isin(
+            [
+                "주의",
+                "위험",
+            ]
+        )
+    ]
+    .sort_values(
+        [
+            "predicted_grade",
+            "risk_index",
+        ],
+        ascending=[
+            False,
+            False,
+        ],
+    )
+    .head(20)
+    .copy()
+)
+
+
+if attention_view.empty:
+
+    attention_view = (
+        result_df
+        .nlargest(
+            min(
+                10,
+                len(result_df),
+            ),
+            "risk_index",
+        )
+        .copy()
+    )
+
+    st.info(
+        "현재 주의·위험 등급 문화유산이 없어 "
+        "환경 취약도 지수가 높은 문화유산을 대신 표시합니다."
+    )
+
+
+for rank, (_, row) in enumerate(
+    attention_view.iterrows(),
+    start=1,
+):
+
+    grade = row[
+        "predicted_grade"
+    ]
+
+    icon = {
+        "안전": "✅",
+        "주의": "⚠️",
+        "위험": "🚨",
+    }.get(
+        grade,
+        "•",
+    )
+
+    with st.expander(
+        (
+            f"{rank}. {icon} "
+            f"{row['heritage_name']} "
+            f"— {grade} "
+            f"(취약도 {row['risk_index']:.1f})"
+        ),
+        expanded=(
+            rank <= 3
+        ),
+    ):
+
+        a1, a2, a3, a4 = st.columns(
+            4
+        )
+
+        a1.metric(
+            "재질",
+            row[
+                "material"
+            ],
+        )
+
+        a2.metric(
+            "노출환경",
+            row[
+                "exposure"
+            ],
+        )
+
+        a3.metric(
+            "주의 이상 확률",
+            f"{row['attention_probability']:.1f}%",
+        )
+
+        a4.metric(
+            "위험 확률",
+            f"{row['danger_probability']:.1f}%",
+        )
 
         if (
-            "response" not in res_json
-            or "body" not in res_json["response"]
-            or "items" not in res_json["response"]["body"]
+            "address" in row.index
+            and pd.notna(
+                row[
+                    "address"
+                ]
+            )
         ):
-            st.error("기상청 API 응답 구조를 불러오지 못했습니다.")
-            return None
-
-        items_data = res_json["response"]["body"]["items"]
-        if not items_data or "item" not in items_data:
-            st.error("조회된 기상 데이터 항목이 없습니다.")
-            return None
-
-        items = items_data["item"]
-        weather = pd.DataFrame(items)
-
-        weather = weather[[
-            "tm",
-            "avgTa",
-            "maxTa",
-            "minTa",
-            "avgRhm",
-            "sumRn",
-            "avgWs",
-            "sumSsHr",
-            "avgTs",
-        ]].copy()
-        weather.columns = [
-            "date",
-            "temp_avg",
-            "temp_max",
-            "temp_min",
-            "humidity",
-            "rainfall",
-            "wind_speed",
-            "solar_radiation",
-            "ground_temp",
-        ]
-        weather["date"] = pd.to_datetime(weather["date"], errors="coerce")
-
-        numeric_cols = [
-            "temp_avg",
-            "temp_max",
-            "temp_min",
-            "humidity",
-            "rainfall",
-            "wind_speed",
-            "solar_radiation",
-            "ground_temp",
-        ]
-        for col in numeric_cols:
-            weather[col] = pd.to_numeric(weather[col], errors="coerce")
-        weather["rainfall"] = weather["rainfall"].fillna(0)
-
-        air_url = "https://docs.google.com/spreadsheets/d/1fBEnheVOP-23Hmv_5ZJZVy6m9VmNkpVd2XutOdmlYc8/export?format=csv&gid=700055413"
-        air = pd.read_csv(air_url)
-        air["date"] = pd.to_datetime(air["date"], errors="coerce")
-
-        df = (
-            pd.merge(weather, air, on="date", how="left")
-            .sort_values("date")
-            .reset_index(drop=True)
-        )
-
-        df["temp_range"] = df["temp_max"] - df["temp_min"]
-        df["humidity_std3"] = df["humidity"].rolling(3, min_periods=1).std()
-        df["rainfall_7d"] = df["rainfall"].rolling(7, min_periods=1).sum()
-        df["high_humidity_risk"] = (df["humidity"] >= 75).rolling(
-            3, min_periods=1
-        ).sum()
-        df["weathering_risk"] = (
-            df["temp_range"] * 0.4
-            + df["humidity_std3"] * 0.3
-            + df["wind_speed"] * 0.3
-        )
-        df["mold_risk"] = (
-            (df["humidity"] >= 75) & (df["ground_temp"] >= 15)
-        ).astype(int)
-        df["pm_load"] = (df["pm10"] + df["pm25"]).rolling(3, min_periods=1).sum()
-        df["acid_risk"] = df["so2"] * 0.6 + df["no2"] * 0.4
-        df["oxidation_risk"] = df["o3"] * 0.7 + df["pm25"] * 0.3
-        df["corrosion_risk"] = df["humidity"] * 0.5 + df["so2"] * 0.5
-        df = df.fillna(0)
-
-        return df
-    except Exception as e:
-        st.error(f"데이터 수집 중 오류 발생: {e}")
-        return None
-
-
-# 실행 버튼
-if st.button("🚀 영천시 105개 전체 문화재 최신 위험도 분석 실행"):
-    with st.spinner("최근 기상 및 대기오염 데이터를 동기화하여 105개 전체 문화재의 위험도를 예측 중입니다..."):
-        df_recent = fetch_latest_prediction_data()
-
-        if df_recent is not None and not df_recent.empty:
-            latest_row = df_recent.iloc[-1].copy()
-            target_date = latest_row["date"].strftime("%Y-%m-%d")
-
-            st.success(f"✅ 최신 데이터 기준일: **{target_date}** (영천 관측소 연동 완료, 총 {len(heritage_df)}개 문화재 대상)")
-
-            results = []
-            # CSV 파일의 105개 행을 반복문으로 돌며 예측
-            for _, heritage in heritage_df.iterrows():
-                row_data = latest_row.to_dict()
-                
-                # CSV 파일의 컬럼명(재질, 노출형태) 매핑
-                row_data["material"] = heritage.get("재질", "기타")
-                row_data["exposure"] = heritage.get("노출형태", "실외")
-
-                single_df = pd.DataFrame([row_data])
-                X_input = single_df[[
-                    "temp_avg", "temp_max", "temp_min", "humidity", "rainfall",
-                    "wind_speed", "solar_radiation", "ground_temp", "pm10", "pm25",
-                    "o3", "no2", "co", "so2", "temp_range", "humidity_std3",
-                    "rainfall_7d", "high_humidity_risk", "weathering_risk",
-                    "mold_risk", "pm_load", "acid_risk", "oxidation_risk",
-                    "corrosion_risk", "material", "exposure"
-                ]]
-                
-                X_input_encoded = pd.get_dummies(X_input, columns=["material", "exposure"])
-                for col in feature_cols:
-                    if col not in X_input_encoded.columns:
-                        X_input_encoded[col] = 0
-                X_input_encoded = X_input_encoded[feature_cols]
-
-                pred = model.predict(X_input_encoded)[0]
-
-                results.append({
-                    "국가유산연계번호": heritage.get("국가유산연계번호", ""),
-                    "문화재명": heritage.get("문화재명(국문)", ""),
-                    "구분": heritage.get("국가유산종목", ""),
-                    "재질": row_data["material"],
-                    "노출환경": row_data["exposure"],
-                    "예측 위험등급": pred,
-                    "평균기온(℃)": latest_row["temp_avg"],
-                    "습도(%)": latest_row["humidity"],
-                    "미세먼지(PM10)": latest_row["pm10"],
-                })
-
-            result_df = pd.DataFrame(results)
-
-            def highlight_risk(val):
-                if val == "위험":
-                    return "background-color: #ffcccc; color: #990000; font-weight: bold;"
-                elif val == "주의":
-                    return "background-color: #ffe5cc; color: #994c00; font-weight: bold;"
-                else:
-                    return "background-color: #ccffcc; color: #006600; font-weight: bold;"
-
-            st.markdown("---")
-            st.subheader(f"📊 영천시 105개 전체 문화재별 최신 위험 예측 현황 ({target_date})")
-            
-            # 스타일 적용 출력
-            st.dataframe(
-                result_df.style.map(highlight_risk, subset=["예측 위험등급"]),
-                use_container_width=True,
-                height=450
+            st.caption(
+                f"📍 소재지: {row['address']}"
             )
 
-            st.markdown("---")
-            m1, m2, m3 = st.columns(3)
-            danger_count = (result_df["예측 위험등급"] == "위험").sum()
-            caution_count = (result_df["예측 위험등급"] == "주의").sum()
-            safe_count = (result_df["예측 위험등급"] == "안전").sum()
 
-            m1.metric("🚨 위험 단계 문화재 수", f"{danger_count} 곳")
-            m2.metric("⚠️ 주의 단계 문화재 수", f"{caution_count} 곳")
-            m3.metric("✅ 안전 단계 문화재 수", f"{safe_count} 곳")
+# ============================================================
+# 16. 예측 기준일 환경 Feature 확인
+# ============================================================
 
-            st.markdown("---")
-            st.subheader("📈 최근 7일간 전체 영천시 기상 기반 위험도 추이")
-            
-            df_7days = df_recent.tail(7).copy()
-            trend_results = []
-            for _, r in df_7days.iterrows():
-                r_dict = r.to_dict()
-                r_dict["material"] = "목조"
-                r_dict["exposure"] = "실외"
-                s_df = pd.DataFrame([r_dict])
-                X_in = s_df[list(X_input.columns)]
-                X_in_enc = pd.get_dummies(X_in, columns=["material", "exposure"])
-                for col in feature_cols:
-                    if col not in X_in_enc.columns:
-                        X_in_enc[col] = 0
-                X_in_enc = X_in_enc[feature_cols]
-                p = model.predict(X_in_enc)[0]
-                trend_results.append({"date": r["date"].strftime("%Y-%m-%d"), "위험등급": p})
-            
-            trend_df = pd.DataFrame(trend_results)
-            st.bar_chart(trend_df.set_index("date")["위험등급"].value_counts())
+st.markdown("---")
+
+with st.expander(
+    "🧪 이번 예측에 사용된 기준일 환경 Feature",
+    expanded=False,
+):
+
+    target_environment = (
+        select_target_environment(
+            realtime_df,
+            prediction_date,
+        )
+    )
+
+    selected_feature_view = (
+        target_environment
+        .T
+        .reset_index()
+    )
+
+    selected_feature_view.columns = [
+        "Feature",
+        "값",
+    ]
+
+    st.dataframe(
+        selected_feature_view,
+        use_container_width=True,
+        hide_index=True,
+        height=520,
+    )
+
+
+# ============================================================
+# 17. CSV 다운로드
+# ============================================================
+
+st.markdown("---")
+
+download_df = (
+    result_df
+    .rename(
+        columns=rename_map
+    )
+    .copy()
+)
+
+csv_bytes = (
+    download_df
+    .to_csv(
+        index=False
+    )
+    .encode(
+        "utf-8-sig"
+    )
+)
+
+st.download_button(
+    "📥 문화유산별 예측 결과 CSV 다운로드",
+    data=csv_bytes,
+    file_name=(
+        f"영천_문화유산_환경취약도_예측_"
+        f"{pd.Timestamp(prediction_date):%Y%m%d}.csv"
+    ),
+    mime="text/csv",
+    type="primary",
+    use_container_width=True,
+)
+
+
+# ============================================================
+# 18. 해석 안내
+# ============================================================
+
+st.caption(
+    "※ 환경 취약도 지수는 모델의 안전·주의·위험 예측 확률을 "
+    "시각화하기 위해 0~100 범위로 환산한 보조지표입니다. "
+    "실제 문화재의 물리적 훼손 정도를 나타내는 측정값이 아닙니다."
+)
