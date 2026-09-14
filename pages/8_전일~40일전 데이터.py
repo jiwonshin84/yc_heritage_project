@@ -76,6 +76,72 @@ DEFAULT_TARGET_DATE = TODAY - timedelta(days=1)
 
 
 # ============================================================
+# 화면/다운로드용 한글 컬럼명
+# ※ realtime_df 내부 컬럼명은 영문 그대로 유지합니다.
+# ============================================================
+
+COLUMN_KR = {
+    # 날짜
+    "date": "날짜",
+
+    # 기상 원자료
+    "temp_avg": "평균기온(℃)",
+    "temp_max": "최고기온(℃)",
+    "temp_min": "최저기온(℃)",
+    "humidity": "평균습도(%)",
+    "rainfall": "일강수량(mm)",
+    "wind_speed": "평균풍속(m/s)",
+    "sunshine_hours": "일조시간(시간)",
+    "ground_temp": "평균지면온도(℃)",
+
+    # 대기환경 원자료
+    "pm10": "미세먼지 PM10(㎍/㎥)",
+    "pm25": "초미세먼지 PM2.5(㎍/㎥)",
+    "o3": "오존 O₃(ppm)",
+    "no2": "이산화질소 NO₂(ppm)",
+    "co": "일산화탄소 CO(ppm)",
+    "so2": "아황산가스 SO₂(ppm)",
+
+    # 기온·습도 파생변수
+    "temp_range": "일교차(℃)",
+    "temp_change": "기온 변화량(℃)",
+    "humidity_change": "습도 변화량(%p)",
+    "humidity_std3": "최근 3일 습도 변동성",
+
+    # 강수
+    "rainfall_7d": "최근 7일 누적강수량(mm)",
+
+    # 습도 조건
+    "rh60_days_28": "최근 28일 습도 60% 이상 일수",
+    "rh70_days_28": "최근 28일 습도 70% 이상 일수",
+    "rh75_days_28": "최근 28일 습도 75% 이상 일수",
+    "rh95_days_28": "최근 28일 습도 95% 이상 일수",
+
+    # 연속 고습도
+    "rh70_consecutive_days": "습도 70% 이상 연속일수",
+    "rh75_consecutive_days": "습도 75% 이상 연속일수",
+    "rh95_consecutive_days": "습도 95% 이상 연속일수",
+
+    # 재질 관련 환경지표
+    "wood_mold_days_28": "최근 28일 목조 곰팡이 조건 일수",
+    "metal_so2_humidity": "금속 고습도·SO₂ 복합지표",
+
+    # 미세먼지
+    "pm_total": "미세먼지 종합부하",
+    "pm_load_3d": "최근 3일 미세먼지 부하",
+    "pm_load_7d": "최근 7일 미세먼지 부하",
+
+    # 대기오염 이동평균
+    "so2_ma7": "최근 7일 SO₂ 평균",
+    "no2_ma7": "최근 7일 NO₂ 평균",
+    "o3_ma7": "최근 7일 O₃ 평균",
+
+    # 계절
+    "season": "계절",
+}
+
+
+# ============================================================
 # 3. 안전한 숫자 변환
 # ============================================================
 
@@ -959,7 +1025,193 @@ if realtime_df is not None:
             )
 
     # ========================================================
-    # 10-3. 40일 전체 원자료
+    # 10-3. 추이 그래프
+    # ========================================================
+
+    st.markdown("---")
+    st.subheader("📈 최근 40일 환경 변화")
+
+    chart_col1, chart_col2 = st.columns(2)
+
+    with chart_col1:
+        fig_temp_hum = go.Figure()
+
+        fig_temp_hum.add_trace(
+            go.Scatter(
+                x=realtime_df["date"],
+                y=realtime_df["temp_avg"],
+                mode="lines+markers",
+                name="평균기온(℃)",
+                yaxis="y1",
+            )
+        )
+
+        fig_temp_hum.add_trace(
+            go.Scatter(
+                x=realtime_df["date"],
+                y=realtime_df["humidity"],
+                mode="lines+markers",
+                name="평균습도(%)",
+                yaxis="y2",
+            )
+        )
+
+        fig_temp_hum.update_layout(
+            title="평균기온·평균습도 변화",
+            height=420,
+            hovermode="x unified",
+            xaxis_title="날짜",
+            yaxis=dict(
+                title="기온(℃)",
+            ),
+            yaxis2=dict(
+                title="습도(%)",
+                overlaying="y",
+                side="right",
+                range=[0, 100],
+            ),
+            legend=dict(
+                orientation="h",
+            ),
+        )
+
+        st.plotly_chart(
+            fig_temp_hum,
+            use_container_width=True,
+        )
+
+    with chart_col2:
+        air_chart = (
+            realtime_df[
+                [
+                    "date",
+                    "pm10",
+                    "pm25",
+                ]
+            ]
+            .rename(
+                columns={
+                    "date": "날짜",
+                    "pm10": "미세먼지 PM10",
+                    "pm25": "초미세먼지 PM2.5",
+                }
+            )
+            .melt(
+                id_vars="날짜",
+                var_name="항목",
+                value_name="농도(㎍/㎥)",
+            )
+        )
+
+        fig_air = px.line(
+            air_chart,
+            x="날짜",
+            y="농도(㎍/㎥)",
+            color="항목",
+            markers=True,
+            title="PM10·PM2.5 변화",
+        )
+
+        fig_air.update_layout(
+            height=420,
+            hovermode="x unified",
+        )
+
+        st.plotly_chart(
+            fig_air,
+            use_container_width=True,
+        )
+
+    chart_col3, chart_col4 = st.columns(2)
+
+    with chart_col3:
+        if "rainfall_7d" in realtime_df.columns:
+            rain_chart = realtime_df[
+                [
+                    "date",
+                    "rainfall_7d",
+                ]
+            ].rename(
+                columns={
+                    "date": "날짜",
+                    "rainfall_7d": "최근 7일 누적강수량(mm)",
+                }
+            )
+
+            fig_rain = px.bar(
+                rain_chart,
+                x="날짜",
+                y="최근 7일 누적강수량(mm)",
+                title="최근 7일 누적 강수량",
+            )
+
+            fig_rain.update_layout(
+                height=390,
+            )
+
+            st.plotly_chart(
+                fig_rain,
+                use_container_width=True,
+            )
+
+    with chart_col4:
+        humid_features = [
+            col
+            for col in [
+                "rh60_days_28",
+                "rh70_days_28",
+                "rh75_days_28",
+                "rh95_days_28",
+            ]
+            if col in realtime_df.columns
+        ]
+
+        if humid_features:
+            humid_legend_map = {
+                "rh60_days_28": "습도 60% 이상",
+                "rh70_days_28": "습도 70% 이상",
+                "rh75_days_28": "습도 75% 이상",
+                "rh95_days_28": "습도 95% 이상",
+            }
+
+            humid_long = (
+                realtime_df[
+                    ["date"] + humid_features
+                ]
+                .rename(
+                    columns={
+                        "date": "날짜",
+                        **humid_legend_map,
+                    }
+                )
+                .melt(
+                    id_vars="날짜",
+                    var_name="습도 조건",
+                    value_name="최근 28일 해당 일수",
+                )
+            )
+
+            fig_rh = px.line(
+                humid_long,
+                x="날짜",
+                y="최근 28일 해당 일수",
+                color="습도 조건",
+                markers=True,
+                title="최근 28일 습도 조건 누적일수",
+            )
+
+            fig_rh.update_layout(
+                height=390,
+                yaxis_range=[0, 28],
+            )
+
+            st.plotly_chart(
+                fig_rh,
+                use_container_width=True,
+            )
+
+    # ========================================================
+    # 10-4. 최근 40일 기상·대기환경 데이터 표
     # ========================================================
 
     st.markdown("---")
@@ -996,6 +1248,9 @@ if realtime_df is not None:
             ascending=False,
         )
         .copy()
+        .rename(
+            columns=COLUMN_KR
+        )
     )
 
     st.dataframe(
@@ -1006,7 +1261,7 @@ if realtime_df is not None:
     )
 
     # ========================================================
-    # 10-4. 예측 핵심 파생변수
+    # 10-5. 최근 40일 예측용 파생변수 표
     # ========================================================
 
     st.markdown("---")
@@ -1050,6 +1305,9 @@ if realtime_df is not None:
             ascending=False,
         )
         .copy()
+        .rename(
+            columns=COLUMN_KR
+        )
     )
 
     st.dataframe(
@@ -1058,160 +1316,6 @@ if realtime_df is not None:
         height=520,
         hide_index=True,
     )
-
-    # ========================================================
-    # 10-5. 추이 그래프
-    # ========================================================
-
-    st.markdown("---")
-    st.subheader("📈 최근 40일 환경 변화")
-
-    chart_col1, chart_col2 = st.columns(2)
-
-    with chart_col1:
-        fig_temp_hum = go.Figure()
-
-        fig_temp_hum.add_trace(
-            go.Scatter(
-                x=realtime_df["date"],
-                y=realtime_df["temp_avg"],
-                mode="lines+markers",
-                name="평균기온(℃)",
-                yaxis="y1",
-            )
-        )
-
-        fig_temp_hum.add_trace(
-            go.Scatter(
-                x=realtime_df["date"],
-                y=realtime_df["humidity"],
-                mode="lines+markers",
-                name="습도(%)",
-                yaxis="y2",
-            )
-        )
-
-        fig_temp_hum.update_layout(
-            title="평균기온·습도 변화",
-            height=420,
-            hovermode="x unified",
-            yaxis=dict(
-                title="기온(℃)",
-            ),
-            yaxis2=dict(
-                title="습도(%)",
-                overlaying="y",
-                side="right",
-                range=[0, 100],
-            ),
-            legend=dict(
-                orientation="h",
-            ),
-        )
-
-        st.plotly_chart(
-            fig_temp_hum,
-            use_container_width=True,
-        )
-
-    with chart_col2:
-        air_chart = realtime_df[
-            [
-                "date",
-                "pm10",
-                "pm25",
-            ]
-        ].melt(
-            id_vars="date",
-            var_name="항목",
-            value_name="농도",
-        )
-
-        fig_air = px.line(
-            air_chart,
-            x="date",
-            y="농도",
-            color="항목",
-            markers=True,
-            title="PM10·PM2.5 변화",
-        )
-
-        fig_air.update_layout(
-            height=420,
-            hovermode="x unified",
-        )
-
-        st.plotly_chart(
-            fig_air,
-            use_container_width=True,
-        )
-
-    chart_col3, chart_col4 = st.columns(2)
-
-    with chart_col3:
-        if "rainfall_7d" in realtime_df.columns:
-            fig_rain = px.bar(
-                realtime_df,
-                x="date",
-                y="rainfall_7d",
-                title="최근 7일 누적 강수량",
-                labels={
-                    "rainfall_7d": "7일 누적 강수량(mm)",
-                    "date": "날짜",
-                },
-            )
-
-            fig_rain.update_layout(
-                height=390,
-            )
-
-            st.plotly_chart(
-                fig_rain,
-                use_container_width=True,
-            )
-
-    with chart_col4:
-        humid_features = [
-            col
-            for col in [
-                "rh60_days_28",
-                "rh70_days_28",
-                "rh75_days_28",
-                "rh95_days_28",
-            ]
-            if col in realtime_df.columns
-        ]
-
-        if humid_features:
-            humid_long = (
-                realtime_df[
-                    ["date"]
-                    + humid_features
-                ]
-                .melt(
-                    id_vars="date",
-                    var_name="조건",
-                    value_name="최근 28일 일수",
-                )
-            )
-
-            fig_rh = px.line(
-                humid_long,
-                x="date",
-                y="최근 28일 일수",
-                color="조건",
-                title="28일 습도 조건 누적일수",
-            )
-
-            fig_rh.update_layout(
-                height=390,
-                yaxis_range=[0, 28],
-            )
-
-            st.plotly_chart(
-                fig_rh,
-                use_container_width=True,
-            )
 
     # ========================================================
     # 10-6. 데이터 품질
@@ -1256,8 +1360,16 @@ if realtime_df is not None:
 
     st.markdown("---")
 
-    csv_bytes = (
+    download_df = (
         realtime_df
+        .copy()
+        .rename(
+            columns=COLUMN_KR
+        )
+    )
+
+    csv_bytes = (
+        download_df
         .to_csv(index=False)
         .encode("utf-8-sig")
     )
@@ -1266,7 +1378,7 @@ if realtime_df is not None:
         "📥 최근 40일 예측용 데이터 CSV 다운로드",
         data=csv_bytes,
         file_name=(
-            f"yeongcheon_prediction_input_40days_"
+            f"영천_최근40일_예측용_환경데이터_"
             f"{pd.Timestamp(loaded_target_date):%Y%m%d}.csv"
         ),
         mime="text/csv",
