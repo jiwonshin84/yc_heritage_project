@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -28,7 +29,14 @@ st.caption(
 st.info(
     "📌 이 페이지에서는 데이터를 새로 수집하지 않습니다. "
     "먼저 **문화유산 취약도 예측** 페이지에서 자동 수집·예측을 실행하면 "
-    "같은 세션에 저장된 최근 40일 환경 데이터를 불러와 분석합니다."
+    "같은 세션의 데이터를 우선 사용하고, 세션이 초기화된 경우에는 "
+    "직전에 저장된 최근 40일 환경 데이터를 자동으로 불러와 분석합니다."
+)
+
+DATA_DIR = Path("data/processed")
+LATEST_ENVIRONMENT_PATH = (
+    DATA_DIR
+    / "latest_40_environment.csv"
 )
 
 
@@ -152,8 +160,19 @@ def safe_metric(value, digits=1, suffix=""):
 
 def get_session_environment():
     """
-    문화유산 취약도 예측 페이지에서 저장한 최근 40일 데이터를 읽는다.
+    최근 40일 환경 데이터를 다음 우선순위로 불러온다.
+
+    1순위
+    - 문화유산 취약도 예측 페이지가 현재 세션에 저장한 데이터
+
+    2순위
+    - 직전 예측 시 저장한
+      data/processed/latest_40_environment.csv
+
+    반환값의 data_source는
+    "session" 또는 "csv"이다.
     """
+
     realtime_df = st.session_state.get(
         "recent_40_environment"
     )
@@ -178,6 +197,65 @@ def get_session_environment():
         "recent_40_air_station"
     )
 
+    data_source = None
+
+    # --------------------------------------------------------
+    # 1순위: 현재 Streamlit 세션 데이터
+    # --------------------------------------------------------
+    if (
+        isinstance(
+            realtime_df,
+            pd.DataFrame,
+        )
+        and not realtime_df.empty
+    ):
+        data_source = "session"
+
+    # --------------------------------------------------------
+    # 2순위: 저장된 CSV fallback
+    # --------------------------------------------------------
+    else:
+        realtime_df = None
+
+        if LATEST_ENVIRONMENT_PATH.exists():
+            try:
+                realtime_df = pd.read_csv(
+                    LATEST_ENVIRONMENT_PATH,
+                    encoding="utf-8-sig",
+                )
+
+                if (
+                    isinstance(
+                        realtime_df,
+                        pd.DataFrame,
+                    )
+                    and not realtime_df.empty
+                ):
+                    data_source = "csv"
+
+                    # CSV에는 별도 target_date가 없으므로
+                    # 가장 최근 날짜를 기준일로 사용
+                    if "date" in realtime_df.columns:
+                        parsed_dates = pd.to_datetime(
+                            realtime_df["date"],
+                            errors="coerce",
+                        )
+
+                        if parsed_dates.notna().any():
+                            target_date = (
+                                parsed_dates.max()
+                            )
+
+            except Exception as e:
+                st.warning(
+                    "저장된 최근 40일 환경 데이터 파일을 "
+                    f"불러오지 못했습니다: {e}"
+                )
+                realtime_df = None
+
+    # --------------------------------------------------------
+    # 사용할 수 있는 데이터가 없는 경우
+    # --------------------------------------------------------
     if (
         realtime_df is None
         or not isinstance(
@@ -193,21 +271,52 @@ def get_session_environment():
             quality,
             target_date,
             air_station,
+            None,
         )
 
+    # --------------------------------------------------------
+    # 날짜 정리
+    # --------------------------------------------------------
     df = realtime_df.copy()
 
-    if "date" in df.columns:
-        df["date"] = pd.to_datetime(
-            df["date"],
-            errors="coerce",
+    if "date" not in df.columns:
+        st.error(
+            "최근 40일 환경 데이터에 date 컬럼이 없습니다."
         )
 
-        df = (
-            df
-            .dropna(subset=["date"])
-            .sort_values("date")
-            .reset_index(drop=True)
+        return (
+            None,
+            weather_df,
+            air_df,
+            quality,
+            target_date,
+            air_station,
+            data_source,
+        )
+
+    df["date"] = pd.to_datetime(
+        df["date"],
+        errors="coerce",
+    )
+
+    df = (
+        df
+        .dropna(
+            subset=["date"]
+        )
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
+
+    if df.empty:
+        return (
+            None,
+            weather_df,
+            air_df,
+            quality,
+            target_date,
+            air_station,
+            data_source,
         )
 
     return (
@@ -217,6 +326,7 @@ def get_session_environment():
         quality,
         target_date,
         air_station,
+        data_source,
     )
 
 
@@ -231,12 +341,13 @@ def get_session_environment():
     quality,
     target_date,
     air_station,
+    data_source,
 ) = get_session_environment()
 
 
 if realtime_df is None:
     st.warning(
-        "⚠️ 현재 세션에 최근 40일 환경 데이터가 없습니다."
+        "⚠️ 최근 40일 환경 데이터를 찾지 못했습니다."
     )
 
     st.markdown(
@@ -245,8 +356,9 @@ if realtime_df is None:
             <h4>먼저 문화유산 취약도 예측을 실행해주세요.</h4>
             <p>
                 예측 페이지에서 버튼을 누르면 전일 기준 최근 40일 환경 데이터를
-                자동 수집하고 파생변수를 생성합니다. 그 후 이 페이지로 이동하면
-                수집된 자료를 바로 시각화합니다.
+                자동 수집하고 파생변수를 생성합니다. 이 자료는 현재 세션과
+                data/processed/latest_40_environment.csv에 저장되며,
+                이후 이 페이지에서 바로 시각화할 수 있습니다.
             </p>
         </div>
         """,
@@ -308,6 +420,17 @@ m5.metric(
     "날짜 누락",
     f"{missing_days}일",
 )
+
+if data_source == "session":
+    st.caption(
+        "📡 데이터 출처: 현재 예측 세션에서 전달된 최근 40일 환경 데이터"
+    )
+
+elif data_source == "csv":
+    st.caption(
+        "💾 데이터 출처: 직전 예측에서 저장된 "
+        "data/processed/latest_40_environment.csv"
+    )
 
 if len(realtime_df) >= 28:
     st.success(
