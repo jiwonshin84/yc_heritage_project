@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 st_autorefresh(
-    interval=2 * 1000,
+    interval=20 * 1000,
     key="sensor_refresh"
 )
 
@@ -23,14 +23,14 @@ FIREBASE_HISTORY_URL = "https://heritage-project-4a361-default-rtdb.asia-southea
 def to_float(value):
     try:
         return float(value)
-    except:
-        return 0.0
+    except (TypeError, ValueError):
+        return float("nan")
 
 
 def parse_time(timestamp):
     try:
         return datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
-    except:
+    except (TypeError, ValueError):
         return None
 
 
@@ -53,9 +53,34 @@ def get_device_status(timestamp):
         return "🟢 정상 수신"
 
 
-def metric_value(value, unit, zero_check=False):
-    if zero_check and value == 0:
+def metric_value(value, unit):
+    if pd.isna(value):
         return "센서 확인"
+    return f"{value:.1f} {unit}"
+
+
+def stat_value(series, unit, mode="mean"):
+    """
+    선택 기간 통계 표시용.
+    유효한 값이 하나도 없으면 '센서 확인'을 표시한다.
+    """
+    valid = pd.to_numeric(
+        series,
+        errors="coerce"
+    ).dropna()
+
+    if valid.empty:
+        return "센서 확인"
+
+    if mode == "mean":
+        value = valid.mean()
+    elif mode == "max":
+        value = valid.max()
+    elif mode == "min":
+        value = valid.min()
+    else:
+        return "센서 확인"
+
     return f"{value:.1f} {unit}"
 
 
@@ -84,7 +109,10 @@ def load_realtime_devices():
 
         return devices
 
-    except:
+    except Exception as e:
+        st.warning(
+            f"Firebase 실시간 데이터 조회 실패: {e}"
+        )
         return {}
 
 
@@ -126,19 +154,22 @@ def load_history_data():
 
         for col in numeric_cols:
             if col not in df.columns:
-                df[col] = 0
+                df[col] = pd.NA
 
             df[col] = pd.to_numeric(
                 df[col],
                 errors="coerce"
-            ).fillna(0)
+            )
 
         df = df.dropna(subset=["timestamp"])
         df = df.sort_values("timestamp")
 
         return df
 
-    except:
+    except Exception as e:
+        st.warning(
+            f"Firebase 이력 데이터 조회 실패: {e}"
+        )
         return pd.DataFrame()
 
 
@@ -174,14 +205,14 @@ else:
 
     for device_key, data in sorted(realtime_devices.items()):
 
-        temp = to_float(data.get("temperature", 0))
-        hum = to_float(data.get("humidity", 0))
-        pressure = to_float(data.get("pressure", 0))
-        light = to_float(data.get("light", 0))
+        temp = to_float(data.get("temperature"))
+        hum = to_float(data.get("humidity"))
+        pressure = to_float(data.get("pressure"))
+        light = to_float(data.get("light"))
 
-        pm1 = to_float(data.get("pm1", 0))
-        pm25 = to_float(data.get("pm25", 0))
-        pm10 = to_float(data.get("pm10", 0))
+        pm1 = to_float(data.get("pm1"))
+        pm25 = to_float(data.get("pm25"))
+        pm10 = to_float(data.get("pm10"))
 
         timestamp = data.get("timestamp", "-")
         device = data.get("device", device_key)
@@ -202,7 +233,7 @@ else:
         with col1:
             st.metric(
                 "🌡️ 기온",
-                metric_value(temp, "℃", zero_check=True)
+                metric_value(temp, "℃")
             )
             
             #st.metric("🌡️ 기온", f"{temp:.1f} ℃")
@@ -210,32 +241,32 @@ else:
         with col2:
             st.metric(
                 "💧 습도",
-                metric_value(hum, "%", zero_check=True)
+                metric_value(hum, "%")
             )
             #st.metric("💧 습도", f"{hum:.1f} %")
 
         with col3:
             st.metric(
                 "🌬️ 기압",
-                metric_value(pressure, "hPa", zero_check=True)
+                metric_value(pressure, "hPa")
             )
 
         with col4:
             st.metric(
                 "☀️ 조도",
-                metric_value(light, "lux", zero_check=True)
+                metric_value(light, "lux")
             )
 
         col5, col6, col7, col8 = st.columns(4)
 
         with col5:
-            st.metric("🌫️ PM1.0", f"{pm1:.1f} ㎍/㎥")
+            st.metric("🌫️ PM1.0", metric_value(pm1, "㎍/㎥"))
 
         with col6:
-            st.metric("🌫️ PM2.5", f"{pm25:.1f} ㎍/㎥")
+            st.metric("🌫️ PM2.5", metric_value(pm25, "㎍/㎥"))
 
         with col7:
-            st.metric("🌫️ PM10", f"{pm10:.1f} ㎍/㎥")
+            st.metric("🌫️ PM10", metric_value(pm10, "㎍/㎥"))
 
         with col8:
             st.empty()
@@ -315,57 +346,57 @@ else:
     stat_col1, stat_col2, stat_col3, stat_col4, stat_col5 = st.columns(5)
 
     with stat_col1:
-        st.metric("평균 기온", f"{filtered_df['temperature'].mean():.1f} ℃")
+        st.metric("평균 기온", stat_value(filtered_df["temperature"], "℃", "mean"))
 
     with stat_col2:
-        st.metric("평균 습도", f"{filtered_df['humidity'].mean():.1f} %")
+        st.metric("평균 습도", stat_value(filtered_df["humidity"], "%", "mean"))
 
     with stat_col3:
-        st.metric("평균 기압", f"{filtered_df['pressure'].mean():.1f} hPa")
+        st.metric("평균 기압", stat_value(filtered_df["pressure"], "hPa", "mean"))
 
     with stat_col4:
-        st.metric("평균 조도", f"{filtered_df['light'].mean():.1f} lux")
+        st.metric("평균 조도", stat_value(filtered_df["light"], "lux", "mean"))
 
     with stat_col5:
-        st.metric("평균 PM2.5", f"{filtered_df['pm25'].mean():.1f} ㎍/㎥")
+        st.metric("평균 PM2.5", stat_value(filtered_df["pm25"], "㎍/㎥", "mean"))
 
     st.markdown("#### 선택 기간 최대값")
 
     max_col1, max_col2, max_col3, max_col4, max_col5 = st.columns(5)
 
     with max_col1:
-        st.metric("최고 기온", f"{filtered_df['temperature'].max():.1f} ℃")
+        st.metric("최고 기온", stat_value(filtered_df["temperature"], "℃", "max"))
 
     with max_col2:
-        st.metric("최고 습도", f"{filtered_df['humidity'].max():.1f} %")
+        st.metric("최고 습도", stat_value(filtered_df["humidity"], "%", "max"))
 
     with max_col3:
-        st.metric("최고 기압", f"{filtered_df['pressure'].max():.1f} hPa")
+        st.metric("최고 기압", stat_value(filtered_df["pressure"], "hPa", "max"))
 
     with max_col4:
-        st.metric("최고 조도", f"{filtered_df['light'].max():.1f} lux")
+        st.metric("최고 조도", stat_value(filtered_df["light"], "lux", "max"))
 
     with max_col5:
-        st.metric("최고 PM2.5", f"{filtered_df['pm25'].max():.1f} ㎍/㎥")
+        st.metric("최고 PM2.5", stat_value(filtered_df["pm25"], "㎍/㎥", "max"))
 
     st.markdown("#### 선택 기간 최소값")
 
     min_col1, min_col2, min_col3, min_col4, min_col5 = st.columns(5)
 
     with min_col1:
-        st.metric("최저 기온", f"{filtered_df['temperature'].min():.1f} ℃")
+        st.metric("최저 기온", stat_value(filtered_df["temperature"], "℃", "min"))
 
     with min_col2:
-        st.metric("최저 습도", f"{filtered_df['humidity'].min():.1f} %")
+        st.metric("최저 습도", stat_value(filtered_df["humidity"], "%", "min"))
 
     with min_col3:
-        st.metric("최저 기압", f"{filtered_df['pressure'].min():.1f} hPa")
+        st.metric("최저 기압", stat_value(filtered_df["pressure"], "hPa", "min"))
 
     with min_col4:
-        st.metric("최저 조도", f"{filtered_df['light'].min():.1f} lux")
+        st.metric("최저 조도", stat_value(filtered_df["light"], "lux", "min"))
 
     with min_col5:
-        st.metric("최저 PM2.5", f"{filtered_df['pm25'].min():.1f} ㎍/㎥")
+        st.metric("최저 PM2.5", stat_value(filtered_df["pm25"], "㎍/㎥", "min"))
 
     st.markdown("#### 선택 기간 데이터 변화")
 
