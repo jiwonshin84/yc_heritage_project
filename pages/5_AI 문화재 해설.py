@@ -95,13 +95,11 @@ def clear_ai_cache():
 # =====================================================
 # 4. 음성 출력용 JavaScript 함수
 # =====================================================
-def speak_text(text):
+def render_tts_button(text):
     """
-    브라우저의 SpeechSynthesis API를 이용하여
-    생성된 해설을 한국어로 읽어준다.
-
-    json.dumps를 사용하여 따옴표, 줄바꿈, 특수문자 때문에
-    JavaScript 문자열이 깨지는 문제를 방지한다.
+    브라우저 정책상 Streamlit 버튼 클릭 후 rerun된 iframe에서
+    speechSynthesis.speak()를 자동 실행하면 차단될 수 있다.
+    따라서 iframe 내부의 실제 HTML 버튼 클릭 이벤트에서 직접 TTS를 실행한다.
     """
     if not text:
         return
@@ -111,22 +109,85 @@ def speak_text(text):
         ensure_ascii=False,
     )
 
-    tts_script = f"""
-    <script>
-        window.speechSynthesis.cancel();
+    tts_html = f"""
+    <div style="width:100%; font-family:Arial, sans-serif;">
+        <button
+            id="ttsButton"
+            style="
+                width:100%;
+                height:40px;
+                border:1px solid #d1d5db;
+                border-radius:8px;
+                background:#ffffff;
+                color:#111827;
+                font-size:15px;
+                font-weight:600;
+                cursor:pointer;
+            "
+        >
+            🔊 해설 듣기
+        </button>
 
-        const msg = new SpeechSynthesisUtterance({js_text});
-        msg.lang = "ko-KR";
-        msg.rate = 1.0;
-        msg.pitch = 1.0;
+        <script>
+            const button = document.getElementById("ttsButton");
 
-        window.speechSynthesis.speak(msg);
-    </script>
+            button.addEventListener("click", function() {{
+                if (!("speechSynthesis" in window)) {{
+                    alert("이 브라우저는 음성 읽기 기능을 지원하지 않습니다.");
+                    return;
+                }}
+
+                window.speechSynthesis.cancel();
+
+                const utterance = new SpeechSynthesisUtterance({js_text});
+                utterance.lang = "ko-KR";
+                utterance.rate = 1.0;
+                utterance.pitch = 1.0;
+                utterance.volume = 1.0;
+
+                const voices = window.speechSynthesis.getVoices();
+                const koreanVoice = voices.find(
+                    voice =>
+                        voice.lang &&
+                        voice.lang.toLowerCase().startsWith("ko")
+                );
+
+                if (koreanVoice) {{
+                    utterance.voice = koreanVoice;
+                }}
+
+                utterance.onstart = function() {{
+                    button.innerText = "⏹ 해설 재생 중";
+                }};
+
+                utterance.onend = function() {{
+                    button.innerText = "🔊 해설 듣기";
+                }};
+
+                utterance.onerror = function(event) {{
+                    button.innerText = "🔊 해설 듣기";
+                    console.error("TTS 오류:", event);
+                    alert(
+                        "음성 재생이 차단되었거나 한국어 음성 엔진을 사용할 수 없습니다."
+                    );
+                }};
+
+                window.speechSynthesis.speak(utterance);
+            }});
+
+            // 일부 브라우저는 getVoices()가 늦게 준비됨
+            if ("speechSynthesis" in window) {{
+                window.speechSynthesis.onvoiceschanged = function() {{
+                    window.speechSynthesis.getVoices();
+                }};
+            }}
+        </script>
+    </div>
     """
 
     components.html(
-        tts_script,
-        height=0,
+        tts_html,
+        height=48,
     )
 
 
@@ -251,14 +312,10 @@ def show_docent_dialog(
     )
 
     with btn_col1:
-        if st.button(
-            "🔊 해설 듣기",
-            use_container_width=True,
-            key="docent_speak_btn",
-        ):
-            speak_text(
-                docent_text
-            )
+        # 브라우저의 사용자 클릭 이벤트 안에서 직접 TTS 실행
+        render_tts_button(
+            docent_text
+        )
 
     with btn_col2:
         if st.button(
@@ -591,7 +648,9 @@ try:
             )
 
         else:
+            # 한 번에 하나의 Dialog만 열리도록 상호 배타적으로 처리
             st.session_state.open_docent = True
+            st.session_state.open_qa = False
 
     # =================================================
     # AI 질문 버튼
@@ -610,7 +669,9 @@ try:
             )
 
         else:
+            # 한 번에 하나의 Dialog만 열리도록 상호 배타적으로 처리
             st.session_state.open_qa = True
+            st.session_state.open_docent = False
             st.session_state.current_user_q = (
                 user_q.strip()
             )
@@ -628,7 +689,7 @@ try:
             content_text,
         )
 
-    if st.session_state.open_qa:
+    elif st.session_state.open_qa:
         user_q_val = (
             st.session_state.get(
                 "current_user_q",
