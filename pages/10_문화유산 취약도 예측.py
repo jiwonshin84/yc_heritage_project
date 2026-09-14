@@ -1747,7 +1747,7 @@ top1, top2, top3, top4 = st.columns(
 )
 
 top1.metric(
-    "📅 예측 기준일",
+    "📅 수집 요청 기준일",
     f"{target_ts:%Y-%m-%d}",
 )
 
@@ -1774,6 +1774,11 @@ st.caption(
 st.caption(
     "※ 별도의 '최근 40일 환경 데이터' 페이지를 먼저 실행할 필요가 없습니다. "
     "아래 버튼 한 번으로 전일 기준 최근 40일 데이터 수집부터 예측까지 처리합니다."
+)
+
+st.caption(
+    "※ 전일 일자료가 아직 공공데이터 API에 제공되지 않은 경우에는 "
+    "최종 파생변수가 생성된 가장 최근 날짜를 자동으로 예측 기준일로 사용합니다."
 )
 
 
@@ -1824,19 +1829,96 @@ if run_clicked:
             )
         )
 
-        # 기준일 정확히 존재하는지 확인
+        # --------------------------------------------------------
+        # 실제 API 수집 최신일 / 최종 Feature 최신일 확인
+        # --------------------------------------------------------
+        weather_last_date = pd.to_datetime(
+            weather["date"],
+            errors="coerce",
+        ).max()
+
+        air_last_date = pd.to_datetime(
+            air["date"],
+            errors="coerce",
+        ).max()
+
+        if realtime_df.empty:
+            raise ValueError(
+                "파생변수 생성 후 사용 가능한 환경 Feature가 없습니다."
+            )
+
+        realtime_df = realtime_df.copy()
+        realtime_df["date"] = pd.to_datetime(
+            realtime_df["date"],
+            errors="coerce",
+        ).dt.floor("D")
+
+        realtime_df = (
+            realtime_df
+            .dropna(subset=["date"])
+            .sort_values("date")
+            .reset_index(drop=True)
+        )
+
+        if realtime_df.empty:
+            raise ValueError(
+                "파생변수의 날짜를 확인할 수 없어 예측을 진행할 수 없습니다."
+            )
+
+        requested_target_ts = pd.Timestamp(
+            target_date
+        ).floor("D")
+
+        actual_target_ts = realtime_df[
+            "date"
+        ].max().floor("D")
+
+        # 요청한 전일보다 미래 날짜가 선택되지 않도록 방어
+        if actual_target_ts > requested_target_ts:
+            actual_target_ts = requested_target_ts
+
         target_rows = realtime_df.loc[
             realtime_df["date"].dt.floor("D")
-            == pd.Timestamp(
-                target_date
-            ).floor("D")
+            == actual_target_ts
         ]
 
         if target_rows.empty:
             raise ValueError(
-                f"{target_date:%Y-%m-%d} 기준일의 "
-                "최종 환경 Feature가 없습니다. "
-                "이전 날짜를 임의로 대신 사용하지 않습니다."
+                f"{actual_target_ts:%Y-%m-%d} 기준일의 "
+                "최종 환경 Feature를 생성하지 못했습니다."
+            )
+
+        # 실제 예측에 사용할 날짜로 변경
+        target_date = actual_target_ts.date()
+
+        # 수집 최신일을 화면에 표시
+        weather_date_text = (
+            weather_last_date.strftime("%Y-%m-%d")
+            if pd.notna(weather_last_date)
+            else "확인 불가"
+        )
+
+        air_date_text = (
+            air_last_date.strftime("%Y-%m-%d")
+            if pd.notna(air_last_date)
+            else "확인 불가"
+        )
+
+        st.caption(
+            f"🌦 ASOS 최신 자료: {weather_date_text} · "
+            f"🌫 AirKorea 최신 자료: {air_date_text} · "
+            f"🧮 최종 Feature 최신일: {actual_target_ts:%Y-%m-%d}"
+        )
+
+        # 전일 자료가 아직 생성되지 않은 경우 안내 후
+        # 실제 확보된 가장 최신 Feature 날짜로 예측
+        if actual_target_ts < requested_target_ts:
+            st.warning(
+                f"⚠️ {requested_target_ts:%Y-%m-%d} 기준의 "
+                "최종 환경 Feature가 아직 생성되지 않았습니다.\n\n"
+                "공공데이터 API에서 현재 확보 가능한 가장 최근 "
+                f"Feature 날짜인 **{actual_target_ts:%Y-%m-%d}**를 "
+                "기준으로 예측합니다."
             )
 
         # 수집 결과 세션 저장
@@ -1862,7 +1944,7 @@ if run_clicked:
 
         # 4. exact target feature
         status.update(
-            label="📌 전일 기준 환경 Feature 선택 중...",
+            label="📌 실제 사용 가능한 최신 환경 Feature 선택 중...",
             state="running",
         )
 
