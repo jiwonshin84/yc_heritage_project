@@ -880,8 +880,116 @@ def collect_and_process_data(
     )
 
 
+
 # ============================================================
-# 8. Session State
+# 8. 저장된 데이터 자동 복원
+# ============================================================
+
+def load_saved_training_data():
+    """
+    Streamlit Cloud가 GitHub commit 이후 재배포되어 Session State가
+    초기화되더라도 저장소에 있는 CSV를 다시 읽어 화면을 복원한다.
+
+    Returns
+    -------
+    cleaned_df, train_df, quality_info
+    """
+
+    if not RAW_SAVE_PATH.exists():
+        return None, None, None
+
+    if not FEATURE_SAVE_PATH.exists():
+        return None, None, None
+
+    try:
+        cleaned_df = pd.read_csv(
+            RAW_SAVE_PATH,
+            encoding="utf-8-sig",
+        )
+
+        train_df = pd.read_csv(
+            FEATURE_SAVE_PATH,
+            encoding="utf-8-sig",
+        )
+
+        # 날짜형 복원
+        if "date" in cleaned_df.columns:
+            cleaned_df["date"] = pd.to_datetime(
+                cleaned_df["date"],
+                errors="coerce",
+            )
+
+        if "date" in train_df.columns:
+            train_df["date"] = pd.to_datetime(
+                train_df["date"],
+                errors="coerce",
+            )
+
+        cleaned_df = (
+            cleaned_df
+            .dropna(subset=["date"])
+            .sort_values("date")
+            .reset_index(drop=True)
+        )
+
+        train_df = (
+            train_df
+            .dropna(subset=["date"])
+            .sort_values("date")
+            .reset_index(drop=True)
+        )
+
+        # 화면용 컬럼이 저장 CSV에 없더라도 다시 생성
+        if "year" not in train_df.columns:
+            train_df["year"] = (
+                train_df["date"].dt.year
+            )
+
+        if "display_season" not in train_df.columns:
+            train_df["display_season"] = (
+                train_df["date"]
+                .dt.month
+                .apply(get_display_season)
+            )
+
+        # 저장본 기준 품질 정보 재계산
+        if len(cleaned_df) > 0:
+            expected_dates = pd.date_range(
+                start=cleaned_df["date"].min(),
+                end=cleaned_df["date"].max(),
+                freq="D",
+            )
+
+            missing_dates = expected_dates.difference(
+                cleaned_df["date"]
+            )
+
+            quality_info = {
+                "removed_rows": 0,
+                "missing_date_count": len(missing_dates),
+            }
+        else:
+            quality_info = {
+                "removed_rows": 0,
+                "missing_date_count": 0,
+            }
+
+        return (
+            cleaned_df,
+            train_df,
+            quality_info,
+        )
+
+    except Exception as e:
+        st.warning(
+            f"⚠️ 저장된 학습 데이터 자동 복원 실패: {e}"
+        )
+
+        return None, None, None
+
+
+# ============================================================
+# 9. Session State
 # ============================================================
 
 if "df_cleaned" not in st.session_state:
@@ -893,13 +1001,38 @@ if "df_train_features" not in st.session_state:
 if "data_quality_info" not in st.session_state:
     st.session_state.data_quality_info = None
 
-
 if "github_upload_results" not in st.session_state:
     st.session_state.github_upload_results = None
 
 
+# ------------------------------------------------------------
+# GitHub commit → Streamlit 재배포 후 Session State가 초기화되면
+# 저장소에 체크아웃된 CSV를 자동으로 다시 읽어 화면 복원
+# ------------------------------------------------------------
+
+if st.session_state.df_train_features is None:
+    (
+        saved_cleaned_df,
+        saved_train_df,
+        saved_quality_info,
+    ) = load_saved_training_data()
+
+    if saved_train_df is not None:
+        st.session_state.df_cleaned = (
+            saved_cleaned_df
+        )
+
+        st.session_state.df_train_features = (
+            saved_train_df
+        )
+
+        st.session_state.data_quality_info = (
+            saved_quality_info
+        )
+
+
 # ============================================================
-# 9. 데이터 수집 버튼
+# 10. 데이터 수집 버튼
 # ============================================================
 
 col_ui1, col_ui2 = st.columns(
@@ -922,7 +1055,8 @@ with col_ui2:
         )
     else:
         st.success(
-            "✅ 학습용 데이터셋과 파생변수 데이터가 준비되었습니다."
+            "✅ 학습용 데이터셋이 준비되었습니다. "
+            "아래에서 품질 확인과 시각화를 바로 확인할 수 있습니다."
         )
 
 
@@ -972,7 +1106,7 @@ if collect_clicked:
 
 
 # ============================================================
-# 10. 결과 화면
+# 11. 결과 화면
 # ============================================================
 
 df = st.session_state.df_train_features
@@ -984,7 +1118,7 @@ github_upload_results = st.session_state.github_upload_results
 if df is not None:
 
     # ========================================================
-    # 10-1. GitHub 자동 업로드 결과
+    # 11-1. GitHub 자동 업로드 결과
     # ========================================================
 
     st.markdown("---")
@@ -1013,13 +1147,13 @@ if df is not None:
         )
 
     else:
-        st.warning(
-            "GitHub 업로드 결과가 없습니다. "
-            "새로 '데이터 수집 시작'을 실행해 주세요."
+        st.info(
+            "ℹ️ 현재 화면은 저장된 학습 데이터를 불러온 상태입니다. "
+            "GitHub 업로드 결과 메시지는 수집 직후 세션에서만 표시될 수 있습니다."
         )
 
     # ========================================================
-    # 10-2. 다운로드
+    # 11-2. 다운로드
     # ========================================================
 
     col_d1, col_d2 = st.columns(2)
@@ -1056,7 +1190,7 @@ if df is not None:
         )
 
     # ========================================================
-    # 10-3. 데이터 품질 리포트
+    # 11-3. 데이터 품질 리포트
     # ========================================================
 
     st.markdown("---")
@@ -1111,7 +1245,7 @@ if df is not None:
         )
 
     # ========================================================
-    # 10-4. 연도별 데이터 확인
+    # 11-4. 연도별 데이터 확인
     # ========================================================
 
     st.markdown("---")
@@ -1138,7 +1272,7 @@ if df is not None:
     )
 
     # ========================================================
-    # 10-5. KPI
+    # 11-5. KPI
     # ========================================================
 
     st.markdown("---")
@@ -1172,7 +1306,7 @@ if df is not None:
     )
 
     # ========================================================
-    # 10-6. 파생변수 확인
+    # 11-6. 파생변수 확인
     # ========================================================
 
     st.markdown("---")
@@ -1215,7 +1349,7 @@ if df is not None:
     )
 
     # ========================================================
-    # 10-7. 시각화 대시보드
+    # 11-7. 시각화 대시보드
     # ========================================================
 
     st.markdown("---")
@@ -1656,7 +1790,7 @@ if df is not None:
         )
 
     # ========================================================
-    # 10-8. 원본 미리보기
+    # 11-8. 원본 미리보기
     # ========================================================
 
     st.markdown("---")
