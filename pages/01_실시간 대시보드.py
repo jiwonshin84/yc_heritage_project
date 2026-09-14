@@ -503,7 +503,7 @@ with map_col:
         ),
     ).add_to(m)
 
-  st_folium(m, width="100%", height=460, key="weather_map")
+  st_folium(m, width="100%", height=600, key="weather_map")
 
 with right_col:
   # 1. 대기현황 카드
