@@ -22,7 +22,7 @@ pages = {
         st.Page("pages/6_학습 데이터 수집.py", title="학습 데이터 수집", icon="🚀"),
         st.Page("pages/7_위험 예측 분류 모델 학습.py", title="위험 예측 분류 모델 학습", icon="🗂️"),     
         st.Page("pages/7_위험 예측 분류 모델 학습 최적화.py", title="위험 예측 분류 모델 학습 최적화", icon="🗂️"),             
-        st.Page("pages/8_전일~7일전 데이터.py", title="전일~7일전 데이터", icon="🔍"),  
+        st.Page("pages/8_전일~40일전 데이터.py", title="전일~40일전 데이터", icon="🔍"),  
         st.Page("pages/8_예측.py", title="예측", icon="💡"),     
     ],
     "피지컬": [
