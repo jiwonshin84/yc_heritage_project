@@ -176,8 +176,10 @@ AIR_STATION_NAME = st.secrets.get(
     "영천",
 )
 
+KST = ZoneInfo("Asia/Seoul")
+
 DEFAULT_TARGET_DATE = (
-    date.today()
+    datetime.now(KST).date()
     - timedelta(days=1)
 )
 
