@@ -98,6 +98,27 @@ st.info(
 )
 
 
+# GitHub 자동 업로드 설정 상태 확인
+github_secret_ok = (
+    "GITHUB_TOKEN" in st.secrets
+    and "GITHUB_REPO" in st.secrets
+    and bool(str(st.secrets.get("GITHUB_TOKEN", "")).strip())
+    and bool(str(st.secrets.get("GITHUB_REPO", "")).strip())
+)
+
+if github_secret_ok:
+    st.success(
+        "☁️ GitHub 자동 업로드 설정이 확인되었습니다. "
+        f"저장소: {st.secrets['GITHUB_REPO']}"
+    )
+else:
+    st.error(
+        "❌ GitHub 자동 업로드 설정이 없습니다. "
+        "Streamlit Secrets에 GITHUB_TOKEN과 GITHUB_REPO를 추가한 뒤 "
+        "앱을 재부팅하세요."
+    )
+
+
 # ============================================================
 # 4. 기상청 ASOS 연도별 수집 함수
 # ============================================================
@@ -179,68 +200,187 @@ def get_display_season(month: int) -> str:
 # 6. GitHub 업로드 함수
 # ============================================================
 
-def upload_to_github(
-    dataframe: pd.DataFrame,
-    git_file_path: str,
-    commit_message: str,
-) -> None:
+def get_github_repo():
     """
-    Streamlit Secrets의 GitHub 정보로
-    CSV를 GitHub 저장소에 생성 또는 업데이트한다.
+    Streamlit Secrets에서 GitHub 인증정보를 읽고
+    Repository 객체와 기본 브랜치명을 반환한다.
+
+    필수 Secrets
+    ------------
+    GITHUB_TOKEN = "github_pat_..."
+    GITHUB_REPO = "사용자명/저장소명"
     """
 
     try:
-        token = st.secrets.get("GITHUB_TOKEN", "")
-        repo_name = st.secrets.get("GITHUB_REPO", "")
+        token = st.secrets["GITHUB_TOKEN"]
+        repo_name = st.secrets["GITHUB_REPO"]
 
-        if not token or not repo_name:
-            st.warning(
-                "⚠️ GITHUB_TOKEN 또는 GITHUB_REPO가 없어 "
-                "GitHub 자동 업로드를 건너뜁니다."
-            )
-            return
+    except KeyError as e:
+        raise RuntimeError(
+            f"Streamlit Secrets에 GitHub 설정이 없습니다: {e}"
+        ) from e
 
-        g = Github(token)
-        repo = g.get_repo(repo_name)
-
-        file_content = dataframe.to_csv(
-            index=False,
-            encoding="utf-8-sig",
+    if not str(token).strip():
+        raise RuntimeError(
+            "GITHUB_TOKEN 값이 비어 있습니다."
         )
 
-        try:
-            contents = repo.get_contents(git_file_path)
+    if not str(repo_name).strip():
+        raise RuntimeError(
+            "GITHUB_REPO 값이 비어 있습니다."
+        )
 
-            repo.update_file(
-                path=git_file_path,
-                message=commit_message,
-                content=file_content,
-                sha=contents.sha,
-                branch="main",
-            )
+    try:
+        github = Github(
+            str(token).strip(),
+            timeout=30,
+        )
 
-            st.toast(
-                f"☁️ GitHub [{git_file_path}] 업데이트 완료",
-                icon="🚀",
-            )
+        repo = github.get_repo(
+            str(repo_name).strip()
+        )
 
-        except Exception:
+        # 저장소의 실제 기본 브랜치를 자동 사용
+        branch = repo.default_branch
+
+        return repo, branch
+
+    except Exception as e:
+        raise RuntimeError(
+            f"GitHub 저장소 연결 실패: {e}"
+        ) from e
+
+
+def upload_local_file_to_github(
+    local_path: Path | str,
+    git_file_path: str,
+    commit_message: str,
+) -> dict:
+    """
+    로컬에 실제 저장된 파일을 GitHub에 자동 업로드한다.
+
+    - 기존 파일이 있으면 update_file()
+    - 파일이 없으면 create_file()
+    - 저장소 기본 브랜치를 자동 사용
+    - 실패 시 예외를 숨기지 않고 호출부로 전달
+    """
+
+    local_path = Path(
+        local_path
+    )
+
+    if not local_path.exists():
+        raise FileNotFoundError(
+            f"업로드할 로컬 파일이 없습니다: {local_path}"
+        )
+
+    repo, branch = get_github_repo()
+
+    file_bytes = (
+        local_path
+        .read_bytes()
+    )
+
+    # GitHub 내 경로는 Windows 역슬래시가 들어가지 않도록 통일
+    git_file_path = (
+        str(git_file_path)
+        .replace("\\", "/")
+        .lstrip("/")
+    )
+
+    try:
+        existing = repo.get_contents(
+            git_file_path,
+            ref=branch,
+        )
+
+        repo.update_file(
+            path=git_file_path,
+            message=commit_message,
+            content=file_bytes,
+            sha=existing.sha,
+            branch=branch,
+        )
+
+        return {
+            "path": git_file_path,
+            "status": "업데이트",
+            "branch": branch,
+        }
+
+    except Exception as get_error:
+        # 파일이 실제로 없는 경우에만 create_file 수행
+        status_code = getattr(
+            get_error,
+            "status",
+            None,
+        )
+
+        if status_code == 404:
             repo.create_file(
                 path=git_file_path,
                 message=commit_message,
-                content=file_content,
-                branch="main",
+                content=file_bytes,
+                branch=branch,
             )
 
-            st.toast(
-                f"☁️ GitHub [{git_file_path}] 새 파일 생성 완료",
-                icon="🚀",
-            )
+            return {
+                "path": git_file_path,
+                "status": "신규 생성",
+                "branch": branch,
+            }
 
-    except Exception as e:
-        st.warning(
-            f"⚠️ GitHub 자동 업로드 중 오류: {e}"
+        # 인증/권한/저장소/브랜치 등의 오류를
+        # '파일 없음'으로 오인하지 않도록 그대로 전달
+        raise RuntimeError(
+            f"GitHub 기존 파일 확인 실패 "
+            f"[{git_file_path}]: {get_error}"
+        ) from get_error
+
+
+def upload_training_files_to_github() -> list[dict]:
+    """
+    이번 수집 과정에서 생성된 2개 CSV를 GitHub에 업로드한다.
+    하나라도 실패하면 예외를 발생시켜 화면에서 실패 원인을 확인할 수 있게 한다.
+    """
+
+    upload_targets = [
+        {
+            "local_path": RAW_SAVE_PATH,
+            "github_path": (
+                f"data/processed/{RAW_FILE_NAME}"
+            ),
+            "commit_message": (
+                f"chore: {START_YEAR}~{END_YEAR} "
+                "영천 전처리 데이터 업데이트"
+            ),
+        },
+        {
+            "local_path": FEATURE_SAVE_PATH,
+            "github_path": (
+                f"data/processed/{FEATURE_FILE_NAME}"
+            ),
+            "commit_message": (
+                f"chore: {START_YEAR}~{END_YEAR} "
+                "영천 학습 Feature 데이터 업데이트"
+            ),
+        },
+    ]
+
+    results = []
+
+    for target in upload_targets:
+        result = upload_local_file_to_github(
+            local_path=target["local_path"],
+            git_file_path=target["github_path"],
+            commit_message=target["commit_message"],
         )
+
+        results.append(
+            result
+        )
+
+    return results
 
 
 # ============================================================
@@ -709,23 +849,19 @@ def collect_and_process_data(
         state="running",
     )
 
-    upload_to_github(
-        df,
-        f"data/processed/{RAW_FILE_NAME}",
-        (
-            f"chore: {START_YEAR}~{END_YEAR} "
-            "영천 전처리 데이터 업데이트"
-        ),
+    github_upload_results = (
+        upload_training_files_to_github()
     )
 
-    upload_to_github(
-        train_df,
-        f"data/processed/{FEATURE_FILE_NAME}",
-        (
-            f"chore: {START_YEAR}~{END_YEAR} "
-            "영천 학습 Feature 데이터 업데이트"
-        ),
-    )
+    for result in github_upload_results:
+        st.toast(
+            (
+                f"☁️ {result['path']} "
+                f"{result['status']} 완료 "
+                f"({result['branch']} 브랜치)"
+            ),
+            icon="✅",
+        )
 
     progress_bar.progress(1.0)
 
@@ -740,6 +876,7 @@ def collect_and_process_data(
         train_df,
         removed_rows,
         len(missing_dates),
+        github_upload_results,
     )
 
 
@@ -755,6 +892,10 @@ if "df_train_features" not in st.session_state:
 
 if "data_quality_info" not in st.session_state:
     st.session_state.data_quality_info = None
+
+
+if "github_upload_results" not in st.session_state:
+    st.session_state.github_upload_results = None
 
 
 # ============================================================
@@ -799,6 +940,7 @@ if collect_clicked:
             train_df,
             removed_rows,
             missing_date_count,
+            github_upload_results,
         ) = collect_and_process_data(
             status_box,
             prog_bar,
@@ -817,6 +959,10 @@ if collect_clicked:
             "missing_date_count": missing_date_count,
         }
 
+        st.session_state.github_upload_results = (
+            github_upload_results
+        )
+
         st.rerun()
 
     except Exception as e:
@@ -832,12 +978,48 @@ if collect_clicked:
 df = st.session_state.df_train_features
 cleaned_df = st.session_state.df_cleaned
 quality_info = st.session_state.data_quality_info
+github_upload_results = st.session_state.github_upload_results
 
 
 if df is not None:
 
     # ========================================================
-    # 10-1. 다운로드
+    # 10-1. GitHub 자동 업로드 결과
+    # ========================================================
+
+    st.markdown("---")
+    st.subheader("☁️ GitHub 자동 업로드 결과")
+
+    if github_upload_results:
+        st.success(
+            "✅ 학습 데이터 파일이 GitHub 저장소에 자동 업로드되었습니다."
+        )
+
+        upload_result_df = pd.DataFrame(
+            [
+                {
+                    "GitHub 경로": result["path"],
+                    "처리 결과": result["status"],
+                    "브랜치": result["branch"],
+                }
+                for result in github_upload_results
+            ]
+        )
+
+        st.dataframe(
+            upload_result_df,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    else:
+        st.warning(
+            "GitHub 업로드 결과가 없습니다. "
+            "새로 '데이터 수집 시작'을 실행해 주세요."
+        )
+
+    # ========================================================
+    # 10-2. 다운로드
     # ========================================================
 
     col_d1, col_d2 = st.columns(2)
@@ -874,7 +1056,7 @@ if df is not None:
         )
 
     # ========================================================
-    # 10-2. 데이터 품질 리포트
+    # 10-3. 데이터 품질 리포트
     # ========================================================
 
     st.markdown("---")
@@ -929,7 +1111,7 @@ if df is not None:
         )
 
     # ========================================================
-    # 10-3. 연도별 데이터 확인
+    # 10-4. 연도별 데이터 확인
     # ========================================================
 
     st.markdown("---")
@@ -956,7 +1138,7 @@ if df is not None:
     )
 
     # ========================================================
-    # 10-4. KPI
+    # 10-5. KPI
     # ========================================================
 
     st.markdown("---")
@@ -990,7 +1172,7 @@ if df is not None:
     )
 
     # ========================================================
-    # 10-5. 파생변수 확인
+    # 10-6. 파생변수 확인
     # ========================================================
 
     st.markdown("---")
@@ -1033,7 +1215,7 @@ if df is not None:
     )
 
     # ========================================================
-    # 10-6. 계절 분석
+    # 10-7. 계절 분석
     # ========================================================
 
     st.markdown("---")
@@ -1266,7 +1448,7 @@ if df is not None:
         )
 
     # ========================================================
-    # 10-7. 원본 미리보기
+    # 10-8. 원본 미리보기
     # ========================================================
 
     st.markdown("---")
