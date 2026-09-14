@@ -46,12 +46,19 @@ AWS_MIN_URL = "https://apihub.kma.go.kr/api/typ01/cgi-bin/url/nph-aws2_min"
 # 한국환경공단 시도별 실시간 대기오염 측정 정보 API URL
 AIR_URL = "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty"
 
+# Streamlit Secrets 설정 확인
 if not KMA_AUTH_KEY:
-  st.error("Streamlit Secrets에 KMA_AUTH_KEY가 없습니다.")
+  st.error(
+      "❌ Streamlit Secrets에 KMA_AUTH_KEY가 없습니다. "
+      "Streamlit Cloud의 Settings → Secrets에 인증키를 등록해주세요."
+  )
   st.stop()
 
 if not AIR_SERVICE_KEY:
-  st.error("Streamlit Secrets에 AIR_SERVICE_KEY가 없습니다.")
+  st.error(
+      "❌ Streamlit Secrets에 AIR_SERVICE_KEY가 없습니다. "
+      "Streamlit Cloud의 Settings → Secrets에 인증키를 등록해주세요."
+  )
   st.stop()
 
 # 관측소 좌표 설정
