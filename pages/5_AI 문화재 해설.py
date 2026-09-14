@@ -144,12 +144,15 @@ def clear_ai_cache():
 # =====================================================
 def render_auto_tts_with_stop(text):
     """
-    AI 도슨트 Dialog가 열리면 브라우저 TTS 자동 재생을 시도하고,
-    같은 컴포넌트의 '음성 중지' 버튼으로 확실하게 중지한다.
+    AI 도슨트 Dialog가 열리면 브라우저 TTS 자동 재생을 시도한다.
 
-    Chrome 계열 브라우저에서 speechSynthesis.cancel() 한 번만으로
-    긴 음성이 계속 재생되는 경우를 줄이기 위해
-    pause → cancel → resume → cancel을 반복 적용한다.
+    버튼 동작:
+    - 재생 중: ⏸ 음성 일시 중지
+    - 일시 중지 상태: ▶ 음성 다시 듣기
+    - 재생 완료 후: ▶ 처음부터 다시 듣기
+
+    speechSynthesis.pause()/resume()를 사용하므로
+    일시 중지한 위치에서 이어서 들을 수 있다.
     """
     if not text:
         return
@@ -162,7 +165,7 @@ def render_auto_tts_with_stop(text):
     tts_html = f"""
     <div style="width:100%; font-family:Arial, sans-serif;">
         <button
-            id="stopTtsButton"
+            id="ttsToggleButton"
             style="
                 width:100%;
                 height:40px;
@@ -175,51 +178,18 @@ def render_auto_tts_with_stop(text):
                 cursor:pointer;
             "
         >
-            ⏹ 음성 중지
+            ⏸ 음성 일시 중지
         </button>
 
         <script>
-            let currentUtterance = null;
-            let stoppedByUser = false;
-            let hasStarted = false;
-
             const synth = window.speechSynthesis;
-            const stopButton =
-                document.getElementById("stopTtsButton");
+            const toggleButton =
+                document.getElementById("ttsToggleButton");
 
-            function hardStopSpeech() {{
-                stoppedByUser = true;
-
-                if (!synth) {{
-                    return;
-                }}
-
-                try {{
-                    synth.pause();
-                }} catch (e) {{}}
-
-                try {{
-                    synth.cancel();
-                }} catch (e) {{}}
-
-                /*
-                 * Chrome에서 긴 utterance가 cancel 뒤에도 잠시 이어지는
-                 * 경우를 막기 위해 짧은 간격으로 여러 번 취소한다.
-                 */
-                [0, 50, 150, 300, 600].forEach(function(delay) {{
-                    setTimeout(function() {{
-                        try {{
-                            synth.resume();
-                        }} catch (e) {{}}
-
-                        try {{
-                            synth.cancel();
-                        }} catch (e) {{}}
-                    }}, delay);
-                }});
-
-                currentUtterance = null;
-            }}
+            let currentUtterance = null;
+            let hasStarted = false;
+            let isPaused = false;
+            let isFinished = false;
 
             function findKoreanVoice() {{
                 if (!synth) {{
@@ -237,22 +207,7 @@ def render_auto_tts_with_stop(text):
                 );
             }}
 
-            function startSpeech() {{
-                if (
-                    hasStarted ||
-                    stoppedByUser ||
-                    !synth
-                ) {{
-                    return;
-                }}
-
-                hasStarted = true;
-
-                // 이전 음성이 남아 있으면 먼저 정리
-                try {{
-                    synth.cancel();
-                }} catch (e) {{}}
-
+            function createUtterance() {{
                 currentUtterance =
                     new SpeechSynthesisUtterance({js_text});
 
@@ -268,64 +223,142 @@ def render_auto_tts_with_stop(text):
                 }}
 
                 currentUtterance.onstart = function() {{
-                    if (!stoppedByUser) {{
-                        stopButton.innerText = "⏹ 음성 중지";
-                    }}
+                    hasStarted = true;
+                    isPaused = false;
+                    isFinished = false;
+
+                    toggleButton.innerText =
+                        "⏸ 음성 일시 중지";
                 }};
 
                 currentUtterance.onend = function() {{
-                    if (!stoppedByUser) {{
-                        stopButton.innerText = "✓ 음성 재생 완료";
-                    }}
+                    isPaused = false;
+                    isFinished = true;
+
+                    toggleButton.innerText =
+                        "▶ 처음부터 다시 듣기";
                 }};
 
                 currentUtterance.onerror = function(event) {{
-                    console.error("TTS 오류:", event);
+                    console.error(
+                        "TTS 오류:",
+                        event
+                    );
 
-                    if (!stoppedByUser) {{
-                        stopButton.innerText = "⏹ 음성 중지";
-                    }}
+                    isPaused = false;
+
+                    toggleButton.innerText =
+                        "▶ 음성 다시 듣기";
                 }};
+            }}
+
+            function startSpeechFromBeginning() {{
+                if (!synth) {{
+                    return;
+                }}
+
+                try {{
+                    synth.cancel();
+                }} catch (e) {{}}
+
+                createUtterance();
+
+                isPaused = false;
+                isFinished = false;
 
                 synth.speak(
                     currentUtterance
                 );
             }}
 
-            stopButton.addEventListener(
+            function autoStartSpeech() {{
+                if (
+                    hasStarted ||
+                    !synth
+                ) {{
+                    return;
+                }}
+
+                startSpeechFromBeginning();
+            }}
+
+            toggleButton.addEventListener(
                 "click",
                 function(event) {{
                     event.preventDefault();
                     event.stopPropagation();
 
-                    hardStopSpeech();
+                    if (!synth) {{
+                        return;
+                    }}
 
-                    stopButton.innerText =
-                        "✓ 음성 중지됨";
+                    // 재생 완료 후 버튼 클릭 → 처음부터 다시 재생
+                    if (isFinished) {{
+                        startSpeechFromBeginning();
+                        return;
+                    }}
+
+                    // 일시 중지 상태 → 중지한 위치부터 이어서 재생
+                    if (
+                        isPaused ||
+                        synth.paused
+                    ) {{
+                        try {{
+                            synth.resume();
+                        }} catch (e) {{}}
+
+                        isPaused = false;
+
+                        toggleButton.innerText =
+                            "⏸ 음성 일시 중지";
+
+                        return;
+                    }}
+
+                    // 현재 재생 중 → 일시 중지
+                    if (
+                        synth.speaking
+                    ) {{
+                        try {{
+                            synth.pause();
+                        }} catch (e) {{}}
+
+                        isPaused = true;
+
+                        toggleButton.innerText =
+                            "▶ 음성 다시 듣기";
+
+                        return;
+                    }}
+
+                    // 음성이 재생되고 있지 않으면 처음부터 재생
+                    startSpeechFromBeginning();
                 }}
             );
 
             /*
-             * Dialog/컴포넌트가 사라질 때에도 음성이 백그라운드에서
-             * 계속 남지 않도록 추가 정리.
+             * Dialog/iframe 자체가 종료되거나 페이지가 이동할 때는
+             * 남아 있는 음성을 정리한다.
+             * 단순 일시 중지 상태에서는 cancel하지 않는다.
              */
+            function cleanupSpeech() {{
+                if (!synth) {{
+                    return;
+                }}
+
+                try {{
+                    synth.cancel();
+                }} catch (e) {{}}
+            }}
+
             window.addEventListener(
                 "pagehide",
-                hardStopSpeech
+                cleanupSpeech
             );
 
             window.addEventListener(
                 "beforeunload",
-                hardStopSpeech
-            );
-
-            document.addEventListener(
-                "visibilitychange",
-                function() {{
-                    if (document.hidden) {{
-                        hardStopSpeech();
-                    }}
-                }}
+                cleanupSpeech
             );
 
             if (synth) {{
@@ -337,7 +370,7 @@ def render_auto_tts_with_stop(text):
                     }};
 
                 setTimeout(
-                    startSpeech,
+                    autoStartSpeech,
                     250
                 );
             }}
