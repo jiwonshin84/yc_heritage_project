@@ -101,7 +101,6 @@ FEATURE_COLS_PATH = MODEL_DIR / "feature_cols.pkl"
 MODEL_META_PATH = MODEL_DIR / "model_metadata.json"
 
 HERITAGE_CANDIDATES = [
-    DATA_DIR / "영천_문화재_특성데이터셋.csv",
     DATA_DIR / "yc_heritage_feature.csv",
     DATA_DIR / "yc_heritage_detail_enriched.csv",
     DATA_DIR / "yc_heritage_features.csv",
