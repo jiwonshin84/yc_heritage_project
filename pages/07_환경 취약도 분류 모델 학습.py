@@ -76,6 +76,8 @@ DATA_CANDIDATES = [
 
 MODEL_PATH = MODEL_DIR / "best_model.pkl"
 FEATURE_COLS_PATH = MODEL_DIR / "feature_cols.pkl"
+TRAIN_MEDIANS_PATH = MODEL_DIR / "train_medians.pkl"
+BUNDLE_PATH = MODEL_DIR / "heritage_risk_bundle.pkl"
 MODEL_META_PATH = MODEL_DIR / "model_metadata.json"
 MODEL_SUMMARY_PATH = MODEL_DIR / "model_summary.csv"
 FOLD_RESULTS_PATH = MODEL_DIR / "fold_results.csv"
@@ -1007,6 +1009,14 @@ def run_training(
             "2025 Final Test 데이터가 없습니다."
         )
 
+    # 실시간 예측 시 API 결측값을 학습 데이터 기준으로 보정하기 위한
+    # 2019~2024 최종 학습 구간 Feature 중앙값 저장
+    train_medians = (
+        X_final_train
+        .median(numeric_only=True)
+        .to_dict()
+    )
+
     final_weights = compute_sample_weight(
         class_weight="balanced",
         y=y_final_train,
@@ -1152,6 +1162,7 @@ def run_training(
         "final_report_text": final_report_text,
         "final_cm": final_cm,
         "feature_cols": feature_cols,
+        "train_medians": train_medians,
         "importance_df": importance_df,
     }
 
@@ -1167,6 +1178,7 @@ def save_training_outputs(
 
     best_model = outputs["best_model"]
     feature_cols = outputs["feature_cols"]
+    train_medians = outputs.get("train_medians", {})
     best_model_name = outputs["best_model_name"]
     fold_results_df = outputs["fold_results_df"]
     model_summary_df = outputs["model_summary_df"]
@@ -1181,6 +1193,11 @@ def save_training_outputs(
     joblib.dump(
         feature_cols,
         FEATURE_COLS_PATH,
+    )
+
+    joblib.dump(
+        train_medians,
+        TRAIN_MEDIANS_PATH,
     )
 
     dataset.to_csv(
@@ -1235,6 +1252,22 @@ def save_training_outputs(
             indent=2,
         ),
         encoding="utf-8",
+    )
+
+    # --------------------------------------------------------
+    # 모델 + Feature 목록 + 학습 중앙값 + 메타데이터를
+    # 하나의 Bundle로 저장
+    # --------------------------------------------------------
+    model_bundle = {
+        "model": best_model,
+        "features": feature_cols,
+        "train_medians": train_medians,
+        "metadata": metadata,
+    }
+
+    joblib.dump(
+        model_bundle,
+        BUNDLE_PATH,
     )
 
 
@@ -1416,6 +1449,8 @@ if train_clicked:
         upload_targets = [
             (MODEL_PATH, "models/best_model.pkl"),
             (FEATURE_COLS_PATH, "models/feature_cols.pkl"),
+            (TRAIN_MEDIANS_PATH, "models/train_medians.pkl"),
+            (BUNDLE_PATH, "models/heritage_risk_bundle.pkl"),
             (MODEL_META_PATH, "models/model_metadata.json"),
             (MODEL_SUMMARY_PATH, "models/model_summary.csv"),
             (FOLD_RESULTS_PATH, "models/fold_results.csv"),
