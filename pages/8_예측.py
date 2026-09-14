@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 
 import joblib
+from github import Github
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -99,6 +100,9 @@ DATA_DIR = Path("data/processed")
 MODEL_PATH = MODEL_DIR / "best_model.pkl"
 FEATURE_COLS_PATH = MODEL_DIR / "feature_cols.pkl"
 MODEL_META_PATH = MODEL_DIR / "model_metadata.json"
+
+# 실시간 대시보드가 항상 읽는 마지막 예측 결과 파일
+LATEST_PREDICTION_PATH = DATA_DIR / "latest_prediction.csv"
 
 HERITAGE_CANDIDATES = [
     DATA_DIR / "yc_heritage_feature.csv",
@@ -679,8 +683,201 @@ def make_display_result(
     return display
 
 
+
 # ============================================================
-# 6. 모델 / 최근 40일 / 문화유산 데이터 준비
+# 6. 마지막 예측 결과 저장 / GitHub 자동 업로드
+# ============================================================
+
+def get_github_repo():
+    """
+    Streamlit Secrets에서 GitHub 인증정보를 읽고
+    Repository 객체와 기본 브랜치명을 반환한다.
+
+    필수 Secrets
+    ------------
+    GITHUB_TOKEN = "..."
+    GITHUB_REPO = "jiwonshin84/yc_heritage_project"
+    """
+
+    try:
+        token = st.secrets["GITHUB_TOKEN"]
+        repo_name = st.secrets["GITHUB_REPO"]
+
+    except KeyError as e:
+        raise RuntimeError(
+            f"Streamlit Secrets에 GitHub 설정이 없습니다: {e}"
+        ) from e
+
+    if not str(token).strip():
+        raise RuntimeError(
+            "GITHUB_TOKEN 값이 비어 있습니다."
+        )
+
+    if not str(repo_name).strip():
+        raise RuntimeError(
+            "GITHUB_REPO 값이 비어 있습니다."
+        )
+
+    try:
+        github = Github(
+            str(token).strip(),
+            timeout=30,
+        )
+
+        repo = github.get_repo(
+            str(repo_name).strip()
+        )
+
+        branch = repo.default_branch
+
+        return repo, branch
+
+    except Exception as e:
+        raise RuntimeError(
+            f"GitHub 저장소 연결 실패: {e}"
+        ) from e
+
+
+def upload_local_file_to_github(
+    local_path: Path | str,
+    git_file_path: str,
+    commit_message: str,
+) -> dict:
+    """
+    로컬 파일을 GitHub 저장소에 생성 또는 업데이트한다.
+    """
+
+    local_path = Path(
+        local_path
+    )
+
+    if not local_path.exists():
+        raise FileNotFoundError(
+            f"업로드할 로컬 파일이 없습니다: {local_path}"
+        )
+
+    repo, branch = get_github_repo()
+
+    file_bytes = (
+        local_path
+        .read_bytes()
+    )
+
+    git_file_path = (
+        str(git_file_path)
+        .replace("\\", "/")
+        .lstrip("/")
+    )
+
+    try:
+        existing = repo.get_contents(
+            git_file_path,
+            ref=branch,
+        )
+
+        repo.update_file(
+            path=git_file_path,
+            message=commit_message,
+            content=file_bytes,
+            sha=existing.sha,
+            branch=branch,
+        )
+
+        return {
+            "path": git_file_path,
+            "status": "업데이트",
+            "branch": branch,
+        }
+
+    except Exception as get_error:
+        status_code = getattr(
+            get_error,
+            "status",
+            None,
+        )
+
+        if status_code == 404:
+            repo.create_file(
+                path=git_file_path,
+                message=commit_message,
+                content=file_bytes,
+                branch=branch,
+            )
+
+            return {
+                "path": git_file_path,
+                "status": "신규 생성",
+                "branch": branch,
+            }
+
+        raise RuntimeError(
+            f"GitHub 기존 파일 확인 실패 "
+            f"[{git_file_path}]: {get_error}"
+        ) from get_error
+
+
+def save_latest_prediction(
+    result_df: pd.DataFrame,
+    prediction_date,
+) -> tuple[pd.DataFrame, dict]:
+    """
+    마지막 예측 결과를
+    data/processed/latest_prediction.csv 로 저장하고
+    GitHub에도 자동 업로드한다.
+
+    실시간 대시보드와의 호환을 위해:
+    - prediction_date
+    - risk_label
+    컬럼을 함께 저장한다.
+    """
+
+    save_df = result_df.copy()
+
+    prediction_ts = pd.Timestamp(
+        prediction_date
+    ).floor("D")
+
+    # 대시보드가 최근 예측일과 등급을 안정적으로 읽을 수 있도록
+    # 명확한 공통 컬럼을 추가
+    save_df.insert(
+        0,
+        "prediction_date",
+        prediction_ts.strftime("%Y-%m-%d"),
+    )
+
+    save_df["risk_label"] = (
+        save_df["predicted_grade"]
+    )
+
+    DATA_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    save_df.to_csv(
+        LATEST_PREDICTION_PATH,
+        index=False,
+        encoding="utf-8-sig",
+    )
+
+    github_result = (
+        upload_local_file_to_github(
+            local_path=LATEST_PREDICTION_PATH,
+            git_file_path=(
+                "data/processed/latest_prediction.csv"
+            ),
+            commit_message=(
+                "chore: latest heritage prediction "
+                f"{prediction_ts:%Y-%m-%d}"
+            ),
+        )
+    )
+
+    return save_df, github_result
+
+
+# ============================================================
+# 8. 모델 / 최근 40일 / 문화유산 데이터 준비
 # ============================================================
 
 try:
@@ -736,7 +933,7 @@ except Exception as e:
 
 
 # ============================================================
-# 7. 상단 상태 영역
+# 8. 상단 상태 영역
 # ============================================================
 
 target_ts = pd.Timestamp(
@@ -790,7 +987,7 @@ top4.metric(
 
 
 # ============================================================
-# 8. 예측 실행
+# 9. 예측 실행
 # ============================================================
 
 if "heritage_prediction_result" not in st.session_state:
@@ -798,6 +995,10 @@ if "heritage_prediction_result" not in st.session_state:
 
 if "heritage_prediction_date" not in st.session_state:
     st.session_state.heritage_prediction_date = None
+
+
+if "heritage_prediction_github" not in st.session_state:
+    st.session_state.heritage_prediction_github = None
 
 
 run_clicked = st.button(
@@ -862,7 +1063,21 @@ if run_clicked:
             target_date
         )
 
-        # 메인 대시보드에서 사용할 수 있도록 저장
+        # ----------------------------------------------------
+        # 메인 실시간 대시보드에서 즉시 사용할 세션 값
+        # ----------------------------------------------------
+        st.session_state["prediction_result"] = (
+            result_df.copy()
+        )
+
+        st.session_state["prediction_df"] = (
+            result_df.copy()
+        )
+
+        st.session_state["latest_prediction"] = (
+            result_df.copy()
+        )
+
         st.session_state["danger_count"] = int(
             (
                 result_df[
@@ -873,8 +1088,41 @@ if run_clicked:
             .sum()
         )
 
+        # ----------------------------------------------------
+        # 앱 재부팅/재배포 후에도 사용할 수 있도록
+        # 마지막 예측 결과 CSV 저장 + GitHub 자동 업로드
+        # ----------------------------------------------------
         status.update(
-            label="✅ 문화유산별 환경 취약도 예측 완료",
+            label=(
+                "☁️ 마지막 예측 결과를 "
+                "GitHub에 저장하는 중..."
+            ),
+            state="running",
+        )
+
+        (
+            latest_saved_df,
+            github_result,
+        ) = save_latest_prediction(
+            result_df=result_df,
+            prediction_date=target_date,
+        )
+
+        st.session_state[
+            "heritage_prediction_github"
+        ] = github_result
+
+        # 실시간 대시보드에서 현재 세션에서도
+        # prediction_date / risk_label이 포함된 결과 사용 가능
+        st.session_state[
+            "latest_prediction_df"
+        ] = latest_saved_df
+
+        status.update(
+            label=(
+                "✅ 예측 완료 · "
+                "마지막 예측 결과 GitHub 저장 완료"
+            ),
             state="complete",
             expanded=False,
         )
@@ -888,7 +1136,7 @@ if run_clicked:
 
 
 # ============================================================
-# 9. 예측 결과
+# 10. 예측 결과
 # ============================================================
 
 result_df = (
@@ -923,7 +1171,7 @@ if result_df is None:
 
 
 # ============================================================
-# 10. 결과 요약
+# 11. 결과 요약
 # ============================================================
 
 st.markdown("---")
@@ -932,6 +1180,25 @@ st.subheader(
     f"📊 {pd.Timestamp(prediction_date):%Y-%m-%d} "
     "문화유산 환경 취약도 예측 결과"
 )
+
+
+github_save_result = st.session_state.get(
+    "heritage_prediction_github"
+)
+
+if github_save_result:
+    st.success(
+        "☁️ 마지막 예측 결과 저장 완료 · "
+        f"{github_save_result['path']} · "
+        f"{github_save_result['status']} · "
+        f"{github_save_result['branch']} 브랜치"
+    )
+else:
+    st.info(
+        "ℹ️ 예측을 실행하면 마지막 결과가 "
+        "data/processed/latest_prediction.csv 로 저장되고 "
+        "GitHub에도 자동 업로드됩니다."
+    )
 
 total_count = len(
     result_df
@@ -1054,7 +1321,7 @@ else:
 
 
 # ============================================================
-# 11. 메인 시각화
+# 12. 메인 시각화
 # ============================================================
 
 st.markdown("---")
@@ -1203,7 +1470,7 @@ with right_chart:
 
 
 # ============================================================
-# 12. 재질별 / 노출환경별 분석
+# 13. 재질별 / 노출환경별 분석
 # ============================================================
 
 st.markdown("---")
@@ -1318,7 +1585,7 @@ with exposure_col:
 
 
 # ============================================================
-# 13. 지도 시각화
+# 14. 지도 시각화
 # ============================================================
 
 if (
@@ -1399,7 +1666,7 @@ if (
 
 
 # ============================================================
-# 14. 문화유산별 상세 결과
+# 15. 문화유산별 상세 결과
 # ============================================================
 
 st.markdown("---")
@@ -1545,7 +1812,7 @@ st.dataframe(
 
 
 # ============================================================
-# 15. 우선 확인 문화유산
+# 16. 우선 확인 문화유산
 # ============================================================
 
 st.markdown("---")
@@ -1669,7 +1936,7 @@ for rank, (_, row) in enumerate(
 
 
 # ============================================================
-# 16. 예측 기준일 환경 Feature 확인
+# 17. 예측 기준일 환경 Feature 확인
 # ============================================================
 
 st.markdown("---")
@@ -1706,7 +1973,7 @@ with st.expander(
 
 
 # ============================================================
-# 17. CSV 다운로드
+# 18. CSV 다운로드
 # ============================================================
 
 st.markdown("---")
@@ -1742,8 +2009,15 @@ st.download_button(
 )
 
 
+st.caption(
+    "☁️ 예측 실행 시 동일 결과가 "
+    "`data/processed/latest_prediction.csv` 파일로 GitHub에 자동 저장되어 "
+    "실시간 대시보드의 안전·주의·위험 현황에 사용됩니다."
+)
+
+
 # ============================================================
-# 18. 해석 안내
+# 19. 해석 안내
 # ============================================================
 
 st.caption(
