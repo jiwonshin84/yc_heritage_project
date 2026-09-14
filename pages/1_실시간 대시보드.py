@@ -531,47 +531,84 @@ with right_col:
   )
 
   # 2. 문화재 보존 관리 + 최근 예측 현황 카드
-  st.markdown(
-      f"""
-<div style="background-color:#f8f9fa; padding:12px 14px; border-radius:14px; border:1px solid #e5e7eb; box-shadow:0 4px 12px rgba(0,0,0,0.04);">
-    <div style="{title_style}">🏛 문화재 보존 관리 현황</div>
-    <hr style="margin: 4px 0;">
+  #
+  # 중요:
+  # st.markdown(..., unsafe_allow_html=True)는 HTML 내부에 빈 줄 + 들여쓰기가
+  # 있을 경우 Markdown 코드블록으로 해석될 수 있어 HTML 태그가 그대로
+  # 화면에 출력되는 현상이 발생할 수 있습니다.
+  # 따라서 이 카드는 st.html()로 직접 렌더링합니다.
 
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
-        <div style="{label_style}">실시간 모니터링 대상 문화재</div>
-        <div style="font-size:18px; font-weight:700; color:#1f2937;">{len(df)}개</div>
-    </div>
-
+  if latest_prediction_status["source"] is not None:
+    prediction_html = f"""
     <div style="margin-top:10px; padding-top:9px; border-top:1px solid #e5e7eb;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:7px;">
-            <div style="font-size:16px; font-weight:700; color:#374151;">🤖 마지막 예측 결과</div>
-            <div style="font-size:12px; color:#9ca3af;">{prediction_date_text}</div>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:7px;">
+        <div style="font-size:16px; font-weight:700; color:#374151;">🤖 마지막 예측 결과</div>
+        <div style="font-size:12px; color:#9ca3af; white-space:nowrap;">{prediction_date_text}</div>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:7px;">
+        <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:10px; padding:8px 5px; text-align:center;">
+          <div style="font-size:13px; font-weight:700; color:#047857;">✅ 안전</div>
+          <div style="font-size:20px; font-weight:800; color:#065f46; margin-top:2px;">{safe_text}</div>
         </div>
-
-        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:7px;">
-            <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:10px; padding:8px 5px; text-align:center;">
-                <div style="font-size:13px; font-weight:700; color:#047857;">✅ 안전</div>
-                <div style="font-size:20px; font-weight:800; color:#065f46; margin-top:2px;">{safe_text}</div>
-            </div>
-
-            <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:8px 5px; text-align:center;">
-                <div style="font-size:13px; font-weight:700; color:#b45309;">⚠️ 주의</div>
-                <div style="font-size:20px; font-weight:800; color:#92400e; margin-top:2px;">{caution_text}</div>
-            </div>
-
-            <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:8px 5px; text-align:center;">
-                <div style="font-size:13px; font-weight:700; color:#b91c1c;">🚨 위험</div>
-                <div style="font-size:20px; font-weight:800; color:#991b1b; margin-top:2px;">{danger_text}</div>
-            </div>
+        <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:8px 5px; text-align:center;">
+          <div style="font-size:13px; font-weight:700; color:#b45309;">⚠️ 주의</div>
+          <div style="font-size:20px; font-weight:800; color:#92400e; margin-top:2px;">{caution_text}</div>
         </div>
-
-        <div style="font-size:11px; color:#9ca3af; margin-top:6px; text-align:right;">
-            최근 실행된 문화재 환경 취약도 분류 결과
+        <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:8px 5px; text-align:center;">
+          <div style="font-size:13px; font-weight:700; color:#b91c1c;">🚨 위험</div>
+          <div style="font-size:20px; font-weight:800; color:#991b1b; margin-top:2px;">{danger_text}</div>
         </div>
+      </div>
+      <div style="font-size:11px; color:#9ca3af; margin-top:6px; text-align:right;">
+        최근 실행된 문화재 환경 취약도 분류 결과
+      </div>
     </div>
-</div>
-    """,
-      unsafe_allow_html=True,
-  )
+    """
+  else:
+    # latest_prediction.csv가 없고 현재 세션에도 예측 결과가 없는 경우
+    prediction_html = """
+    <div style="margin-top:10px; padding-top:9px; border-top:1px solid #e5e7eb;">
+      <div style="font-size:16px; font-weight:700; color:#374151; margin-bottom:6px;">
+        🤖 마지막 예측 결과
+      </div>
+      <div style="
+        background:#f9fafb;
+        border:1px dashed #d1d5db;
+        border-radius:10px;
+        padding:12px 10px;
+        text-align:center;
+        color:#6b7280;
+        font-size:13px;
+        line-height:1.55;
+      ">
+        아직 저장된 예측 결과가 없습니다.<br>
+        <span style="font-size:12px; color:#9ca3af;">
+          예측 페이지에서 환경 취약도 예측을 실행하면<br>
+          안전·주의·위험 현황이 여기에 자동 표시됩니다.
+        </span>
+      </div>
+    </div>
+    """
+
+  heritage_card_html = f"""
+  <div style="
+    background-color:#f8f9fa;
+    padding:12px 14px;
+    border-radius:14px;
+    border:1px solid #e5e7eb;
+    box-shadow:0 4px 12px rgba(0,0,0,0.04);
+  ">
+    <div style="{title_style}">🏛 문화재 보존 관리 현황</div>
+    <hr style="margin:4px 0;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:6px;">
+      <div style="{label_style}">실시간 모니터링 대상 문화재</div>
+      <div style="font-size:18px; font-weight:700; color:#1f2937; white-space:nowrap;">{len(df)}개</div>
+    </div>
+    {prediction_html}
+  </div>
+  """
+
+  st.html(heritage_card_html)
+
 
 st.caption("선화여고 - 영천 헤리티지 AI 탐구단")
