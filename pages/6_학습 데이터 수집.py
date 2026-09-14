@@ -89,7 +89,7 @@ st.title(
 st.caption(
     "기상청 ASOS + 대기환경 자료를 결합하고, "
     "모델 학습과 실시간 예측에 공통으로 사용하는 "
-    "파생변수를 생성합니다."
+    "파생변수를 생성한 뒤 GitHub 자동 업로드와 시각화를 수행합니다."
 )
 
 st.info(
@@ -1215,11 +1215,144 @@ if df is not None:
     )
 
     # ========================================================
-    # 10-7. 계절 분석
+    # 10-7. 시각화 대시보드
     # ========================================================
 
     st.markdown("---")
-    st.subheader("📈 계절별 기상 및 대기환경 종합 분석")
+    st.subheader("📊 학습 데이터 시각화 대시보드")
+
+    st.caption(
+        "수집된 2019~2025년 기상·대기환경 자료의 장기 추세와 "
+        "계절별 특성을 확인합니다."
+    )
+
+    # --------------------------------------------------------
+    # 10-7-1. 전체 기간 기온·습도 추세
+    # --------------------------------------------------------
+
+    monthly_weather = (
+        df.set_index("date")
+        .resample("MS")
+        .agg({
+            "temp_avg": "mean",
+            "humidity": "mean",
+        })
+        .reset_index()
+    )
+
+    fig_monthly_weather = make_subplots(
+        specs=[[{"secondary_y": True}]]
+    )
+
+    fig_monthly_weather.add_trace(
+        go.Scatter(
+            x=monthly_weather["date"],
+            y=monthly_weather["temp_avg"],
+            name="월평균 기온 (°C)",
+            mode="lines",
+        ),
+        secondary_y=False,
+    )
+
+    fig_monthly_weather.add_trace(
+        go.Scatter(
+            x=monthly_weather["date"],
+            y=monthly_weather["humidity"],
+            name="월평균 습도 (%)",
+            mode="lines",
+        ),
+        secondary_y=True,
+    )
+
+    fig_monthly_weather.update_layout(
+        title="🌡️💧 2019~2025 월평균 기온·습도 추이",
+        xaxis_title="날짜",
+        height=430,
+        hovermode="x unified",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0,
+        ),
+    )
+
+    fig_monthly_weather.update_yaxes(
+        title_text="기온 (°C)",
+        secondary_y=False,
+    )
+
+    fig_monthly_weather.update_yaxes(
+        title_text="습도 (%)",
+        range=[0, 100],
+        secondary_y=True,
+    )
+
+    st.plotly_chart(
+        fig_monthly_weather,
+        use_container_width=True,
+    )
+
+    # --------------------------------------------------------
+    # 10-7-2. 전체 기간 PM10·PM2.5 추세
+    # --------------------------------------------------------
+
+    monthly_air = (
+        df.set_index("date")
+        .resample("MS")
+        .agg({
+            "pm10": "mean",
+            "pm25": "mean",
+        })
+        .reset_index()
+    )
+
+    fig_monthly_air = go.Figure()
+
+    fig_monthly_air.add_trace(
+        go.Scatter(
+            x=monthly_air["date"],
+            y=monthly_air["pm10"],
+            name="PM10",
+            mode="lines",
+        )
+    )
+
+    fig_monthly_air.add_trace(
+        go.Scatter(
+            x=monthly_air["date"],
+            y=monthly_air["pm25"],
+            name="PM2.5",
+            mode="lines",
+        )
+    )
+
+    fig_monthly_air.update_layout(
+        title="🌫️ 2019~2025 월평균 미세먼지 추이",
+        xaxis_title="날짜",
+        yaxis_title="농도 (㎍/㎥)",
+        height=400,
+        hovermode="x unified",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0,
+        ),
+    )
+
+    st.plotly_chart(
+        fig_monthly_air,
+        use_container_width=True,
+    )
+
+    # --------------------------------------------------------
+    # 10-7-3. 계절별 평균 기온·습도
+    # --------------------------------------------------------
+
+    st.markdown("#### 🌸☀️🍁❄️ 계절별 환경 특성")
 
     row1_col1, row1_col2 = st.columns(2)
 
@@ -1233,14 +1366,11 @@ if df is not None:
                 "humidity": "mean",
             })
             .reset_index()
+            .sort_values("display_season")
         )
 
         fig_season = make_subplots(
-            specs=[[
-                {
-                    "secondary_y": True
-                }
-            ]]
+            specs=[[{"secondary_y": True}]]
         )
 
         fig_season.add_trace(
@@ -1272,7 +1402,7 @@ if df is not None:
         )
 
         fig_season.update_layout(
-            title="🌸☀️🍁❄️ 계절별 평균 기온 및 습도",
+            title="계절별 평균 기온 및 습도",
             xaxis_title="계절",
             height=420,
             hovermode="x unified",
@@ -1294,6 +1424,10 @@ if df is not None:
             use_container_width=True,
         )
 
+    # --------------------------------------------------------
+    # 10-7-4. 연도별 계절 평균 기온 추이
+    # --------------------------------------------------------
+
     with row1_col2:
 
         df_yearly_season = (
@@ -1314,7 +1448,7 @@ if df is not None:
             y="temp_avg",
             color="display_season",
             markers=True,
-            title="📅 연도별 계절 평균 기온 추이",
+            title="연도별 계절 평균 기온 추이",
             labels={
                 "temp_avg": "평균 기온 (°C)",
                 "year": "연도",
@@ -1333,6 +1467,10 @@ if df is not None:
             use_container_width=True,
         )
 
+    # --------------------------------------------------------
+    # 10-7-5. 계절별 PM10·PM2.5
+    # --------------------------------------------------------
+
     row2_col1, row2_col2 = st.columns(2)
 
     with row2_col1:
@@ -1347,6 +1485,7 @@ if df is not None:
             ]
             .mean()
             .reset_index()
+            .sort_values("display_season")
         )
 
         fig_air_season = px.bar(
@@ -1357,7 +1496,7 @@ if df is not None:
                 "pm25",
             ],
             barmode="group",
-            title="🌫️ 계절별 PM10·PM2.5 평균",
+            title="계절별 PM10·PM2.5 평균",
             labels={
                 "value": "농도 (㎍/㎥)",
                 "display_season": "계절",
@@ -1376,9 +1515,12 @@ if df is not None:
             use_container_width=True,
         )
 
+    # --------------------------------------------------------
+    # 10-7-6. 계절별 강수량·일조시간
+    # --------------------------------------------------------
+
     with row2_col2:
 
-        # 기존 코드의 sumSsHr는 일사량이 아니라 일조시간임
         df_season_rain = (
             df
             .groupby("display_season")
@@ -1387,16 +1529,11 @@ if df is not None:
                 "sunshine_hours": "mean",
             })
             .reset_index()
+            .sort_values("display_season")
         )
 
-        fig_rain_season = (
-            make_subplots(
-                specs=[[
-                    {
-                        "secondary_y": True
-                    }
-                ]]
-            )
+        fig_rain_season = make_subplots(
+            specs=[[{"secondary_y": True}]]
         )
 
         fig_rain_season.add_trace(
@@ -1426,7 +1563,7 @@ if df is not None:
         )
 
         fig_rain_season.update_layout(
-            title="🌧️☀️ 계절별 총 강수량과 평균 일조시간",
+            title="계절별 총 강수량과 평균 일조시간",
             xaxis_title="계절",
             height=420,
             hovermode="x unified",
@@ -1444,6 +1581,77 @@ if df is not None:
 
         st.plotly_chart(
             fig_rain_season,
+            use_container_width=True,
+        )
+
+    # --------------------------------------------------------
+    # 10-7-7. 연도별 평균 환경지표
+    # --------------------------------------------------------
+
+    st.markdown("#### 📅 연도별 환경 변화")
+
+    yearly_summary = (
+        df
+        .groupby("year")
+        .agg(
+            평균기온=("temp_avg", "mean"),
+            평균습도=("humidity", "mean"),
+            평균PM10=("pm10", "mean"),
+            평균PM25=("pm25", "mean"),
+            총강수량=("rainfall", "sum"),
+        )
+        .reset_index()
+    )
+
+    col_y1, col_y2 = st.columns(2)
+
+    with col_y1:
+        fig_year_temp = px.line(
+            yearly_summary,
+            x="year",
+            y="평균기온",
+            markers=True,
+            title="연도별 평균 기온",
+            labels={
+                "year": "연도",
+                "평균기온": "평균 기온 (°C)",
+            },
+        )
+
+        fig_year_temp.update_layout(
+            height=390,
+            xaxis=dict(type="category"),
+        )
+
+        st.plotly_chart(
+            fig_year_temp,
+            use_container_width=True,
+        )
+
+    with col_y2:
+        fig_year_pm = px.line(
+            yearly_summary,
+            x="year",
+            y=[
+                "평균PM10",
+                "평균PM25",
+            ],
+            markers=True,
+            title="연도별 평균 PM10·PM2.5",
+            labels={
+                "year": "연도",
+                "value": "농도 (㎍/㎥)",
+                "variable": "구분",
+            },
+        )
+
+        fig_year_pm.update_layout(
+            height=390,
+            xaxis=dict(type="category"),
+        )
+
+        st.plotly_chart(
+            fig_year_pm,
             use_container_width=True,
         )
 
