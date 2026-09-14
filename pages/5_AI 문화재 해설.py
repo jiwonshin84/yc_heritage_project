@@ -707,101 +707,63 @@ try:
             unsafe_allow_html=True,
         )
 
-        st.markdown(
-            f"""
-            <style>
-                .info-table {{
-                    width:100%;
-                    border-collapse:collapse;
-                    margin-top:10px;
-                    border:1px solid #f0f0f0;
-                }}
-
-                .info-tr {{
-                    border-bottom:1px solid #eeeeee;
-                }}
-
-                .info-key {{
-                    width:25%;
-                    padding:12px 10px;
-                    font-weight:bold;
-                    color:#34495e;
-                    background-color:#f8f9fa;
-                    font-size:15px;
-                }}
-
-                .info-val {{
-                    width:75%;
-                    padding:12px 15px;
-                    color:#2c3e50;
-                    font-size:15px;
-                    line-height:1.5;
-                }}
-            </style>
-
-            <table class="info-table">
-
-                <tr class="info-tr">
-                    <td class="info-key">
-                        종목
-                    </td>
-                    <td class="info-val">
-                        {clean(row.get(category_col))}
-                    </td>
-                </tr>
-
-                <tr class="info-tr">
-                    <td class="info-key">
-                        분류
-                    </td>
-                    <td class="info-val">
-                        {clean(row.get('국가유산분류'))}
-                        ({clean(row.get('국가유산분류2'))})
-                    </td>
-                </tr>
-
-                <tr class="info-tr">
-                    <td class="info-key">
-                        한자명
-                    </td>
-                    <td class="info-val">
-                        {clean(row.get('문화재명(한자)'))}
-                    </td>
-                </tr>
-
-                <tr class="info-tr">
-                    <td class="info-key">
-                        시대
-                    </td>
-                    <td class="info-val">
-                        {clean(row.get('시대'))}
-                    </td>
-                </tr>
-
-                <tr class="info-tr">
-                    <td class="info-key">
-                        소재지
-                    </td>
-                    <td class="info-val">
-                        {clean(row.get('소재지상세'))}
-                    </td>
-                </tr>
-
-                <tr class="info-tr">
-                    <td class="info-key">
-                        소유/관리
-                    </td>
-                    <td class="info-val">
-                        {clean(row.get('소유자'))}
-                        /
-                        {clean(row.get('관리자'))}
-                    </td>
-                </tr>
-
-            </table>
-            """,
-            unsafe_allow_html=True,
-        )
+        # st.markdown()은 들여쓰기된 HTML을 코드 블록으로 해석할 수 있으므로
+        # 상세 정보 표는 st.html()로 렌더링한다.
+        detail_html = f"""
+<style>
+.info-table {{
+    width:100%;
+    border-collapse:collapse;
+    margin-top:10px;
+    border:1px solid #f0f0f0;
+}}
+.info-tr {{
+    border-bottom:1px solid #eeeeee;
+}}
+.info-key {{
+    width:25%;
+    padding:12px 10px;
+    font-weight:bold;
+    color:#34495e;
+    background-color:#f8f9fa;
+    font-size:15px;
+}}
+.info-val {{
+    width:75%;
+    padding:12px 15px;
+    color:#2c3e50;
+    font-size:15px;
+    line-height:1.5;
+}}
+</style>
+<table class="info-table">
+<tr class="info-tr">
+    <td class="info-key">종목</td>
+    <td class="info-val">{clean(row.get(category_col))}</td>
+</tr>
+<tr class="info-tr">
+    <td class="info-key">분류</td>
+    <td class="info-val">{clean(row.get('국가유산분류'))} ({clean(row.get('국가유산분류2'))})</td>
+</tr>
+<tr class="info-tr">
+    <td class="info-key">한자명</td>
+    <td class="info-val">{clean(row.get('문화재명(한자)'))}</td>
+</tr>
+<tr class="info-tr">
+    <td class="info-key">시대</td>
+    <td class="info-val">{clean(row.get('시대'))}</td>
+</tr>
+<tr class="info-tr">
+    <td class="info-key">소재지</td>
+    <td class="info-val">{clean(row.get('소재지상세'))}</td>
+</tr>
+<tr class="info-tr">
+    <td class="info-key">소유/관리</td>
+    <td class="info-val">{clean(row.get('소유자'))} / {clean(row.get('관리자'))}</td>
+</tr>
+</table>
+"""
+        st.html(detail_html)
 
         with st.expander(
             "📖 원문 설명 보기",
