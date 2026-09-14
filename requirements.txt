@@ -5,10 +5,9 @@ folium
 streamlit-folium
 scikit-learn
 google-generativeai
+google-genai
 matplotlib
 seaborn
-
 requests
 streamlit-autorefresh
-
 PyGithub
