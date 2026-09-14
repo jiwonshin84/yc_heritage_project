@@ -144,8 +144,12 @@ def clear_ai_cache():
 # =====================================================
 def render_auto_tts_with_stop(text):
     """
-    AI 도슨트 Dialog가 열리면 브라우저 TTS 자동 재생을 시도하고
-    '음성 중지' 버튼으로 음성을 멈춘다.
+    AI 도슨트 Dialog가 열리면 브라우저 TTS 자동 재생을 시도하고,
+    같은 컴포넌트의 '음성 중지' 버튼으로 확실하게 중지한다.
+
+    Chrome 계열 브라우저에서 speechSynthesis.cancel() 한 번만으로
+    긴 음성이 계속 재생되는 경우를 줄이기 위해
+    pause → cancel → resume → cancel을 반복 적용한다.
     """
     if not text:
         return
@@ -176,10 +180,53 @@ def render_auto_tts_with_stop(text):
 
         <script>
             let currentUtterance = null;
+            let stoppedByUser = false;
             let hasStarted = false;
 
+            const synth = window.speechSynthesis;
+            const stopButton =
+                document.getElementById("stopTtsButton");
+
+            function hardStopSpeech() {{
+                stoppedByUser = true;
+
+                if (!synth) {{
+                    return;
+                }}
+
+                try {{
+                    synth.pause();
+                }} catch (e) {{}}
+
+                try {{
+                    synth.cancel();
+                }} catch (e) {{}}
+
+                /*
+                 * Chrome에서 긴 utterance가 cancel 뒤에도 잠시 이어지는
+                 * 경우를 막기 위해 짧은 간격으로 여러 번 취소한다.
+                 */
+                [0, 50, 150, 300, 600].forEach(function(delay) {{
+                    setTimeout(function() {{
+                        try {{
+                            synth.resume();
+                        }} catch (e) {{}}
+
+                        try {{
+                            synth.cancel();
+                        }} catch (e) {{}}
+                    }}, delay);
+                }});
+
+                currentUtterance = null;
+            }}
+
             function findKoreanVoice() {{
-                const voices = window.speechSynthesis.getVoices();
+                if (!synth) {{
+                    return null;
+                }}
+
+                const voices = synth.getVoices();
 
                 return (
                     voices.find(
@@ -191,11 +238,20 @@ def render_auto_tts_with_stop(text):
             }}
 
             function startSpeech() {{
-                if (hasStarted) return;
-                if (!("speechSynthesis" in window)) return;
+                if (
+                    hasStarted ||
+                    stoppedByUser ||
+                    !synth
+                ) {{
+                    return;
+                }}
 
                 hasStarted = true;
-                window.speechSynthesis.cancel();
+
+                // 이전 음성이 남아 있으면 먼저 정리
+                try {{
+                    synth.cancel();
+                }} catch (e) {{}}
 
                 currentUtterance =
                     new SpeechSynthesisUtterance({js_text});
@@ -211,40 +267,73 @@ def render_auto_tts_with_stop(text):
                     currentUtterance.voice = koreanVoice;
                 }}
 
-                currentUtterance.onend = function() {{
-                    const btn =
-                        document.getElementById("stopTtsButton");
+                currentUtterance.onstart = function() {{
+                    if (!stoppedByUser) {{
+                        stopButton.innerText = "⏹ 음성 중지";
+                    }}
+                }};
 
-                    if (btn) {{
-                        btn.innerText = "✓ 음성 재생 완료";
+                currentUtterance.onend = function() {{
+                    if (!stoppedByUser) {{
+                        stopButton.innerText = "✓ 음성 재생 완료";
                     }}
                 }};
 
                 currentUtterance.onerror = function(event) {{
                     console.error("TTS 오류:", event);
+
+                    if (!stoppedByUser) {{
+                        stopButton.innerText = "⏹ 음성 중지";
+                    }}
                 }};
 
-                window.speechSynthesis.speak(
+                synth.speak(
                     currentUtterance
                 );
             }}
 
-            document
-                .getElementById("stopTtsButton")
-                .addEventListener("click", function() {{
-                    if ("speechSynthesis" in window) {{
-                        window.speechSynthesis.cancel();
+            stopButton.addEventListener(
+                "click",
+                function(event) {{
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    hardStopSpeech();
+
+                    stopButton.innerText =
+                        "✓ 음성 중지됨";
+                }}
+            );
+
+            /*
+             * Dialog/컴포넌트가 사라질 때에도 음성이 백그라운드에서
+             * 계속 남지 않도록 추가 정리.
+             */
+            window.addEventListener(
+                "pagehide",
+                hardStopSpeech
+            );
+
+            window.addEventListener(
+                "beforeunload",
+                hardStopSpeech
+            );
+
+            document.addEventListener(
+                "visibilitychange",
+                function() {{
+                    if (document.hidden) {{
+                        hardStopSpeech();
                     }}
+                }}
+            );
 
-                    this.innerText = "✓ 음성 중지됨";
-                }});
+            if (synth) {{
+                synth.getVoices();
 
-            if ("speechSynthesis" in window) {{
-                window.speechSynthesis.getVoices();
-
-                window.speechSynthesis.onvoiceschanged =
+                synth.onvoiceschanged =
                     function() {{
-                        window.speechSynthesis.getVoices();
+                        synth.getVoices();
                     }};
 
                 setTimeout(
