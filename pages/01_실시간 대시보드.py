@@ -35,16 +35,24 @@ count = st_autorefresh(interval=60000, limit=1000, key="weather_auto_refresh")
 # API KEY 및 기본 설정
 # ============================================
 # 기상청 API 허브 전용 인증키
-KMA_AUTH_KEY = "XDdcOK8kT5C3XDivJN-Qtg"
+KMA_AUTH_KEY = st.secrets.get("KMA_AUTH_KEY", "")
 
 # 한국환경공단 API 인증키
-AIR_SERVICE_KEY = "feb2bfabd299d5d05e89c7aec49ba7e706112603e76549a92e868bd86ec60323"
+AIR_SERVICE_KEY = st.secrets.get("AIR_SERVICE_KEY", "")
 
 # 기상청 AWS 매분자료 조회 API URL
 AWS_MIN_URL = "https://apihub.kma.go.kr/api/typ01/cgi-bin/url/nph-aws2_min"
 
 # 한국환경공단 시도별 실시간 대기오염 측정 정보 API URL
-AIR_URL = "http://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty"
+AIR_URL = "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty"
+
+if not KMA_AUTH_KEY:
+  st.error("Streamlit Secrets에 KMA_AUTH_KEY가 없습니다.")
+  st.stop()
+
+if not AIR_SERVICE_KEY:
+  st.error("Streamlit Secrets에 AIR_SERVICE_KEY가 없습니다.")
+  st.stop()
 
 # 관측소 좌표 설정
 STATION_MAP = {
