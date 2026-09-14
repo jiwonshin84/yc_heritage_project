@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import date, timedelta
 import json
+import time
+import urllib.parse
 
 import joblib
 from github import Github
@@ -9,7 +12,10 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import requests
 import streamlit as st
+
+from utils.feature_engineering import create_environment_features
 
 
 # ============================================================
@@ -24,8 +30,9 @@ st.set_page_config(
 
 st.title("🏛️ 영천 문화유산 환경 취약도 예측")
 st.caption(
-    "최근 40일 환경 데이터와 학습된 분류모델을 이용하여 "
-    "문화유산별 환경 취약도를 안전·주의·위험으로 예측합니다."
+    "예측 버튼을 누르면 전일 기준 최근 40일 기상·대기환경 데이터를 자동 수집하고, "
+    "파생변수 생성 후 학습된 분류모델로 문화유산별 환경 취약도를 "
+    "안전·주의·위험으로 바로 예측합니다."
 )
 
 st.info(
@@ -136,6 +143,43 @@ EXPOSURE_ORDER = [
     "반실외",
     "실내",
 ]
+
+
+# ============================================================
+# 4-1. 최근 40일 환경 데이터 API 설정
+# ============================================================
+
+ASOS_URL = (
+    "https://apis.data.go.kr/"
+    "1360000/AsosDalyInfoService/getWthrDataList"
+)
+
+AIR_URL = (
+    "https://apis.data.go.kr/"
+    "B552584/ArpltnStatsSvc/getMsrstnAcctoRDyrg"
+)
+
+STN_ID = "281"  # 영천 ASOS
+
+ASOS_SERVICE_KEY = st.secrets.get(
+    "ASOS_SERVICE_KEY",
+    st.secrets.get("SERVICE_KEY", ""),
+)
+
+AIR_SERVICE_KEY = st.secrets.get(
+    "AIR_SERVICE_KEY",
+    st.secrets.get("SERVICE_KEY", ""),
+)
+
+AIR_STATION_NAME = st.secrets.get(
+    "AIR_STATION_NAME",
+    "영천",
+)
+
+DEFAULT_TARGET_DATE = (
+    date.today()
+    - timedelta(days=1)
+)
 
 
 # ============================================================
@@ -685,6 +729,584 @@ def make_display_result(
 
 
 # ============================================================
+# 5-1. 전일~40일 환경 데이터 자동 수집 / 전처리
+# ============================================================
+
+def to_float(value):
+    """
+    API의 '', '-', None 등을 NaN으로 안전하게 변환.
+    """
+    if value in ("", "-", None):
+        return np.nan
+
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return np.nan
+
+
+# ============================================================
+# 4. ASOS 최근 40일 수집
+# ============================================================
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_recent_weather(
+    target_date: date,
+) -> pd.DataFrame:
+    """
+    예측 기준일 포함 최근 40일 ASOS 일자료 수집.
+    """
+
+    if not ASOS_SERVICE_KEY:
+        raise ValueError(
+            "Streamlit Secrets에 ASOS_SERVICE_KEY "
+            "또는 SERVICE_KEY가 없습니다."
+        )
+
+    start_date = target_date - timedelta(days=39)
+
+    params = {
+        "serviceKey": ASOS_SERVICE_KEY,
+        "numOfRows": "100",
+        "pageNo": "1",
+        "dataType": "JSON",
+        "dataCd": "ASOS",
+        "dateCd": "DAY",
+        "startDt": start_date.strftime("%Y%m%d"),
+        "endDt": target_date.strftime("%Y%m%d"),
+        "stnIds": STN_ID,
+    }
+
+    response = requests.get(
+        ASOS_URL,
+        params=params,
+        timeout=40,
+    )
+
+    response.raise_for_status()
+
+    try:
+        result = response.json()
+    except Exception as e:
+        raise RuntimeError(
+            "ASOS API 응답을 JSON으로 해석할 수 없습니다."
+        ) from e
+
+    items = (
+        result.get("response", {})
+        .get("body", {})
+        .get("items", {})
+        .get("item", [])
+    )
+
+    if not items:
+        raise RuntimeError(
+            f"ASOS 데이터가 없습니다: "
+            f"{start_date} ~ {target_date}"
+        )
+
+    weather = pd.DataFrame(items)
+
+    required_cols = [
+        "tm",
+        "avgTa",
+        "maxTa",
+        "minTa",
+        "avgRhm",
+        "sumRn",
+        "avgWs",
+        "sumSsHr",
+        "avgTs",
+    ]
+
+    missing_cols = [
+        col
+        for col in required_cols
+        if col not in weather.columns
+    ]
+
+    if missing_cols:
+        raise ValueError(
+            "ASOS 응답에 필요한 컬럼이 없습니다: "
+            f"{missing_cols}"
+        )
+
+    weather = weather[
+        required_cols
+    ].copy()
+
+    # sumSsHr = 일조시간
+    weather.columns = [
+        "date",
+        "temp_avg",
+        "temp_max",
+        "temp_min",
+        "humidity",
+        "rainfall",
+        "wind_speed",
+        "sunshine_hours",
+        "ground_temp",
+    ]
+
+    weather["date"] = pd.to_datetime(
+        weather["date"],
+        errors="coerce",
+    ).dt.floor("D")
+
+    for col in [
+        "temp_avg",
+        "temp_max",
+        "temp_min",
+        "humidity",
+        "rainfall",
+        "wind_speed",
+        "sunshine_hours",
+        "ground_temp",
+    ]:
+        weather[col] = pd.to_numeric(
+            weather[col],
+            errors="coerce",
+        )
+
+    # 강수량 공백은 무강수 0 mm로 처리
+    weather["rainfall"] = (
+        weather["rainfall"]
+        .fillna(0)
+    )
+
+    weather = (
+        weather
+        .dropna(subset=["date"])
+        .sort_values("date")
+        .drop_duplicates(
+            subset=["date"],
+            keep="last",
+        )
+        .reset_index(drop=True)
+    )
+
+    return weather
+
+
+# ============================================================
+# 5. AirKorea 최근 40일 수집
+#    7일 단위로 나누어 요청 + 재시도
+# ============================================================
+
+def _request_air_chunk(
+    start_date: date,
+    end_date: date,
+    station_name: str,
+) -> list[dict]:
+    """
+    AirKorea API를 한 구간에 대해 호출.
+    """
+
+    safe_key = urllib.parse.unquote(
+        AIR_SERVICE_KEY
+    )
+
+    params = {
+        "serviceKey": safe_key,
+        "returnType": "json",
+        "numOfRows": "200",
+        "pageNo": "1",
+        "inqBginDt": start_date.strftime("%Y%m%d"),
+        "inqEndDt": end_date.strftime("%Y%m%d"),
+        "msrstnName": station_name,
+    }
+
+    last_error = None
+
+    # 총 4회 시도
+    for retry_no, wait_seconds in enumerate(
+        [0, 3, 6, 10],
+        start=1,
+    ):
+        if wait_seconds:
+            time.sleep(wait_seconds)
+
+        try:
+            response = requests.get(
+                AIR_URL,
+                params=params,
+                timeout=60,
+            )
+
+            response.raise_for_status()
+
+            if not response.text.strip().startswith("{"):
+                raise RuntimeError(
+                    "AirKorea API가 JSON이 아닌 응답을 반환했습니다."
+                )
+
+            data = response.json()
+
+            items = (
+                data.get("response", {})
+                .get("body", {})
+                .get("items", [])
+            )
+
+            return items or []
+
+        except Exception as e:
+            last_error = e
+
+    raise RuntimeError(
+        f"AirKorea 수집 실패 "
+        f"{start_date}~{end_date}: {last_error}"
+    )
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_recent_air(
+    target_date: date,
+) -> tuple[pd.DataFrame, str]:
+    """
+    최근 40일 AirKorea 자료를 7일 단위로 수집.
+    기본 측정소에서 결과가 없으면 "영천시"를 한 번 더 시도한다.
+    """
+
+    if not AIR_SERVICE_KEY:
+        raise ValueError(
+            "Streamlit Secrets에 AIR_SERVICE_KEY "
+            "또는 SERVICE_KEY가 없습니다."
+        )
+
+    start_date = target_date - timedelta(days=39)
+
+    station_candidates = [
+        AIR_STATION_NAME,
+    ]
+
+    if AIR_STATION_NAME != "영천시":
+        station_candidates.append("영천시")
+
+    if AIR_STATION_NAME != "영천":
+        station_candidates.append("영천")
+
+    for station_name in station_candidates:
+        all_items = []
+
+        chunk_start = start_date
+
+        while chunk_start <= target_date:
+            chunk_end = min(
+                chunk_start + timedelta(days=6),
+                target_date,
+            )
+
+            items = _request_air_chunk(
+                chunk_start,
+                chunk_end,
+                station_name,
+            )
+
+            all_items.extend(items)
+
+            chunk_start = (
+                chunk_end
+                + timedelta(days=1)
+            )
+
+        if not all_items:
+            continue
+
+        air = pd.DataFrame(
+            all_items
+        )
+
+        rename_map = {
+            "msurDt": "date",
+            "pm10Value": "pm10",
+            "pm25Value": "pm25",
+            "o3Value": "o3",
+            "no2Value": "no2",
+            "coValue": "co",
+            "so2Value": "so2",
+        }
+
+        air = air.rename(
+            columns=rename_map
+        )
+
+        required_cols = [
+            "date",
+            "pm10",
+            "pm25",
+            "o3",
+            "no2",
+            "co",
+            "so2",
+        ]
+
+        for col in required_cols:
+            if col not in air.columns:
+                air[col] = np.nan
+
+        air = air[
+            required_cols
+        ].copy()
+
+        air["date"] = pd.to_datetime(
+            air["date"],
+            errors="coerce",
+        ).dt.floor("D")
+
+        for col in [
+            "pm10",
+            "pm25",
+            "o3",
+            "no2",
+            "co",
+            "so2",
+        ]:
+            air[col] = (
+                air[col]
+                .replace(
+                    ["-", "", "null", "None"],
+                    np.nan,
+                )
+            )
+
+            air[col] = pd.to_numeric(
+                air[col],
+                errors="coerce",
+            )
+
+        air = (
+            air
+            .dropna(subset=["date"])
+            .groupby(
+                "date",
+                as_index=False,
+            )
+            .mean(
+                numeric_only=True
+            )
+            .sort_values("date")
+            .reset_index(drop=True)
+        )
+
+        if not air.empty:
+            return air, station_name
+
+    raise RuntimeError(
+        "영천 대기환경 자료를 찾지 못했습니다. "
+        "AIR_STATION_NAME 설정을 확인하세요."
+    )
+
+
+# ============================================================
+# 6. 기상 + 대기환경 전처리 및 파생변수
+# ============================================================
+
+def prepare_recent_environment(
+    weather: pd.DataFrame,
+    air: pd.DataFrame,
+) -> tuple[pd.DataFrame, dict]:
+    """
+    학습 데이터와 동일한 방식으로 최근 환경자료를 정리하고
+    create_environment_features()를 적용한다.
+    """
+
+    if weather.empty:
+        raise ValueError(
+            "기상 데이터가 없습니다."
+        )
+
+    if air.empty:
+        raise ValueError(
+            "대기환경 데이터가 없습니다."
+        )
+
+    merged = pd.merge(
+        weather,
+        air,
+        on="date",
+        how="left",
+    )
+
+    merged = (
+        merged
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
+
+    # --------------------------------------------------------
+    # 병합 전 품질 정보
+    # --------------------------------------------------------
+
+    quality = {
+        "weather_days": len(weather),
+        "air_days": len(air),
+        "merged_days": len(merged),
+        "air_missing_before_ffill": int(
+            merged[
+                [
+                    "pm10",
+                    "pm25",
+                    "o3",
+                    "no2",
+                    "co",
+                    "so2",
+                ]
+            ]
+            .isna()
+            .any(axis=1)
+            .sum()
+        ),
+    }
+
+    # --------------------------------------------------------
+    # 이상치 처리
+    # --------------------------------------------------------
+
+    non_negative_cols = [
+        "rainfall",
+        "wind_speed",
+        "sunshine_hours",
+        "humidity",
+        "pm10",
+        "pm25",
+        "o3",
+        "no2",
+        "co",
+        "so2",
+    ]
+
+    for col in non_negative_cols:
+        if col in merged.columns:
+            merged.loc[
+                merged[col] < 0,
+                col,
+            ] = np.nan
+
+    merged.loc[
+        (merged["humidity"] < 0)
+        | (merged["humidity"] > 100),
+        "humidity",
+    ] = np.nan
+
+    merged.loc[
+        merged["pm10"] > 1000,
+        "pm10",
+    ] = np.nan
+
+    merged.loc[
+        merged["pm25"] > 500,
+        "pm25",
+    ] = np.nan
+
+    merged["rainfall"] = (
+        merged["rainfall"]
+        .fillna(0)
+    )
+
+    # --------------------------------------------------------
+    # 과거값 기반 ffill
+    # bfill 사용 안 함: 미래 데이터 누출 방지
+    # --------------------------------------------------------
+
+    fill_cols = [
+        "temp_avg",
+        "temp_max",
+        "temp_min",
+        "humidity",
+        "wind_speed",
+        "sunshine_hours",
+        "ground_temp",
+        "pm10",
+        "pm25",
+        "o3",
+        "no2",
+        "co",
+        "so2",
+    ]
+
+    fill_cols = [
+        col
+        for col in fill_cols
+        if col in merged.columns
+    ]
+
+    merged[fill_cols] = (
+        merged[fill_cols]
+        .ffill()
+    )
+
+    before_drop = len(
+        merged
+    )
+
+    # 시작 구간에서 과거값이 없어 채우지 못한 행 제거
+    merged = (
+        merged
+        .dropna(
+            subset=fill_cols
+        )
+        .reset_index(drop=True)
+    )
+
+    quality["initial_rows_removed"] = (
+        before_drop - len(merged)
+    )
+
+    # --------------------------------------------------------
+    # 최소 길이
+    # --------------------------------------------------------
+
+    if len(merged) < 28:
+        raise ValueError(
+            "전처리 후 사용 가능한 데이터가 "
+            f"{len(merged)}일뿐입니다. "
+            "28일 파생변수를 계산하려면 최소 28일이 필요합니다."
+        )
+
+    # --------------------------------------------------------
+    # 날짜 연속성 확인
+    # --------------------------------------------------------
+
+    expected_dates = pd.date_range(
+        merged["date"].min(),
+        merged["date"].max(),
+        freq="D",
+    )
+
+    missing_dates = expected_dates.difference(
+        merged["date"]
+    )
+
+    quality["missing_calendar_days"] = (
+        len(missing_dates)
+    )
+
+    # 실제 날짜가 누락되면 rolling 일수가 관측행 기준으로 바뀌므로 중단
+    if len(missing_dates) > 0:
+        raise ValueError(
+            "최근 환경 데이터에 날짜 누락이 있습니다. "
+            f"{len(missing_dates)}일 누락: "
+            f"{list(missing_dates[:10])}"
+        )
+
+    # --------------------------------------------------------
+    # 학습과 동일한 공통 파생변수
+    # --------------------------------------------------------
+
+    realtime_df = create_environment_features(
+        merged.copy(),
+        fill_remaining_numeric=False,
+    )
+
+    quality["usable_days"] = len(
+        realtime_df
+    )
+
+    return realtime_df, quality
+
+
+# ============================================================
 # 6. 마지막 예측 결과 저장 / GitHub 자동 업로드
 # ============================================================
 
@@ -877,14 +1499,13 @@ def save_latest_prediction(
 
 
 # ============================================================
-# 8. 모델 / 최근 40일 / 문화유산 데이터 준비
+# 8. 모델 / 문화유산 데이터 준비
 # ============================================================
 
 try:
     model, feature_cols, metadata = (
         load_model_assets()
     )
-
 except Exception as e:
     st.error(
         f"❌ 모델 로드 실패: {e}"
@@ -892,39 +1513,11 @@ except Exception as e:
     st.stop()
 
 
-realtime_df, target_date = (
-    get_recent_environment()
-)
-
-if realtime_df is None:
-
-    st.warning(
-        "⚠️ 최근 40일 예측용 환경 데이터가 없습니다."
-    )
-
-    st.markdown(
-        """
-        <div class="prediction-hero">
-            <h3>먼저 '전일~40일전 데이터' 페이지를 실행하세요.</h3>
-            <p>
-                최근 40일 기상·대기환경 데이터를 불러온 뒤
-                이 페이지로 이동하면 동일한 세션의 데이터를 자동으로 사용합니다.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.stop()
-
-
 try:
     heritage_path = find_heritage_path()
-
     heritage_df = load_heritage_data(
         str(heritage_path)
     )
-
 except Exception as e:
     st.error(
         f"❌ 문화유산 데이터 로드 실패: {e}"
@@ -933,11 +1526,17 @@ except Exception as e:
 
 
 # ============================================================
-# 8. 상단 상태 영역
+# 9. 전일~40일 자동 수집 + 바로 취약도 예측
 # ============================================================
 
+target_date = DEFAULT_TARGET_DATE
 target_ts = pd.Timestamp(
     target_date
+)
+
+start_target_date = (
+    target_date
+    - timedelta(days=39)
 )
 
 model_name = metadata.get(
@@ -945,15 +1544,44 @@ model_name = metadata.get(
     type(model).__name__,
 )
 
+
+# ------------------------------------------------------------
+# 세션 상태
+# ------------------------------------------------------------
+
+session_defaults = {
+    "heritage_prediction_result": None,
+    "heritage_prediction_date": None,
+    "heritage_prediction_github": None,
+    "heritage_prediction_github_error": None,
+    "recent_40_weather": None,
+    "recent_40_air": None,
+    "recent_40_environment": None,
+    "recent_40_quality": None,
+    "recent_40_target_date": None,
+    "recent_40_air_station": None,
+}
+
+for key, default_value in session_defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = default_value
+
+
+# rerun 후에도 상세 화면에서 사용할 수 있도록 세션에서 복원
+realtime_df = st.session_state.get(
+    "recent_40_environment"
+)
+
+
 st.markdown(
     f"""
     <div class="prediction-hero">
-        <h3>🤖 예측 준비 완료</h3>
+        <h3>🤖 전일 기준 자동 수집·예측</h3>
         <p>
-            기준일 <b>{target_ts:%Y-%m-%d}</b> ·
-            문화유산 <b>{len(heritage_df):,}개</b> ·
-            모델 <b>{model_name}</b> ·
-            Feature <b>{len(feature_cols):,}개</b>
+            <b>{start_target_date:%Y-%m-%d}</b> ~
+            <b>{target_ts:%Y-%m-%d}</b> 최근 40일 환경자료를 자동 수집하고,
+            7일·28일 파생변수 생성 → 문화유산 재질·노출환경 결합 →
+            환경 취약도 예측까지 한 번에 실행합니다.
         </p>
     </div>
     """,
@@ -985,39 +1613,85 @@ top4.metric(
     f"{len(feature_cols):,}개",
 )
 
-
-# ============================================================
-# 9. 예측 실행
-# ============================================================
-
-if "heritage_prediction_result" not in st.session_state:
-    st.session_state.heritage_prediction_result = None
-
-if "heritage_prediction_date" not in st.session_state:
-    st.session_state.heritage_prediction_date = None
-
-
-if "heritage_prediction_github" not in st.session_state:
-    st.session_state.heritage_prediction_github = None
+st.caption(
+    "※ 별도의 '최근 40일 환경 데이터' 페이지를 먼저 실행할 필요가 없습니다. "
+    "아래 버튼 한 번으로 전일 기준 최근 40일 데이터 수집부터 예측까지 처리합니다."
+)
 
 
 run_clicked = st.button(
-    "🚀 문화유산 환경 취약도 예측 실행",
+    "🚀 전일~40일 자동 수집 후 문화유산 환경 취약도 예측",
     type="primary",
     use_container_width=True,
 )
 
 
 if run_clicked:
-
     try:
         status = st.status(
-            "문화유산 환경 취약도 예측 준비 중...",
+            "환경 데이터 수집 및 문화유산 취약도 예측을 준비하고 있습니다...",
             expanded=True,
         )
 
+        # 1. ASOS
         status.update(
-            label="📌 기준일 환경 Feature 선택 중...",
+            label="🌦 기상청 ASOS 최근 40일 수집 중...",
+            state="running",
+        )
+
+        weather = fetch_recent_weather(
+            target_date
+        )
+
+        # 2. AirKorea
+        status.update(
+            label="🌫 AirKorea 최근 40일 수집 중...",
+            state="running",
+        )
+
+        air, used_station = fetch_recent_air(
+            target_date
+        )
+
+        # 3. merge + features
+        status.update(
+            label="🧮 기상·대기환경 병합 및 7일·28일 파생변수 생성 중...",
+            state="running",
+        )
+
+        realtime_df, quality = (
+            prepare_recent_environment(
+                weather,
+                air,
+            )
+        )
+
+        # 기준일 정확히 존재하는지 확인
+        target_rows = realtime_df.loc[
+            realtime_df["date"].dt.floor("D")
+            == pd.Timestamp(
+                target_date
+            ).floor("D")
+        ]
+
+        if target_rows.empty:
+            raise ValueError(
+                f"{target_date:%Y-%m-%d} 기준일의 "
+                "최종 환경 Feature가 없습니다. "
+                "이전 날짜를 임의로 대신 사용하지 않습니다."
+            )
+
+        # 수집 결과 세션 저장
+        st.session_state.recent_40_weather = weather
+        st.session_state.recent_40_air = air
+        st.session_state.recent_40_environment = realtime_df
+        st.session_state.recent_40_quality = quality
+        st.session_state.recent_40_target_date = target_date
+        st.session_state.recent_40_air_station = used_station
+
+        # 4. exact target feature
+        status.update(
+            label="📌 전일 기준 환경 Feature 선택 중...",
             state="running",
         )
 
@@ -1028,6 +1702,7 @@ if run_clicked:
             )
         )
 
+        # 5. combine
         status.update(
             label="🏛️ 환경 데이터와 문화유산 특성 결합 중...",
             state="running",
@@ -1040,8 +1715,9 @@ if run_clicked:
             )
         )
 
+        # 6. prediction
         status.update(
-            label="🤖 학습 모델로 문화유산별 등급 예측 중...",
+            label="🤖 학습 모델로 문화유산별 환경 취약도 예측 중...",
             state="running",
         )
 
@@ -1055,6 +1731,7 @@ if run_clicked:
             result_df
         )
 
+        # 예측 결과 세션 저장
         st.session_state.heritage_prediction_result = (
             result_df
         )
@@ -1063,65 +1740,100 @@ if run_clicked:
             target_date
         )
 
-        # ----------------------------------------------------
-        # 메인 실시간 대시보드에서 즉시 사용할 세션 값
-        # ----------------------------------------------------
+        # 실시간 대시보드 호환 세션 키
         st.session_state["prediction_result"] = (
             result_df.copy()
         )
-
         st.session_state["prediction_df"] = (
             result_df.copy()
         )
-
         st.session_state["latest_prediction"] = (
             result_df.copy()
         )
-
         st.session_state["danger_count"] = int(
             (
-                result_df[
-                    "predicted_grade"
-                ]
+                result_df["predicted_grade"]
                 == "위험"
-            )
-            .sum()
+            ).sum()
         )
 
-        # ----------------------------------------------------
-        # 앱 재부팅/재배포 후에도 사용할 수 있도록
-        # 마지막 예측 결과 CSV 저장 + GitHub 자동 업로드
-        # ----------------------------------------------------
+        # 7. latest_prediction.csv + GitHub
         status.update(
-            label=(
-                "☁️ 마지막 예측 결과를 "
-                "GitHub에 저장하는 중..."
-            ),
+            label="☁️ 마지막 예측 결과 저장 중...",
             state="running",
-        )
-
-        (
-            latest_saved_df,
-            github_result,
-        ) = save_latest_prediction(
-            result_df=result_df,
-            prediction_date=target_date,
         )
 
         st.session_state[
             "heritage_prediction_github"
-        ] = github_result
+        ] = None
 
-        # 실시간 대시보드에서 현재 세션에서도
-        # prediction_date / risk_label이 포함된 결과 사용 가능
         st.session_state[
-            "latest_prediction_df"
-        ] = latest_saved_df
+            "heritage_prediction_github_error"
+        ] = None
+
+        try:
+            (
+                latest_saved_df,
+                github_result,
+            ) = save_latest_prediction(
+                result_df=result_df,
+                prediction_date=target_date,
+            )
+
+            st.session_state[
+                "heritage_prediction_github"
+            ] = github_result
+
+            st.session_state[
+                "latest_prediction_df"
+            ] = latest_saved_df
+
+        except Exception as save_error:
+            # GitHub 업로드 오류가 발생해도 예측 자체는 유지
+            st.session_state[
+                "heritage_prediction_github_error"
+            ] = str(save_error)
+
+            # 로컬 latest_prediction.csv는 별도로 보장
+            try:
+                local_save_df = result_df.copy()
+
+                local_save_df.insert(
+                    0,
+                    "prediction_date",
+                    pd.Timestamp(
+                        target_date
+                    ).strftime("%Y-%m-%d"),
+                )
+
+                local_save_df["risk_label"] = (
+                    local_save_df[
+                        "predicted_grade"
+                    ]
+                )
+
+                DATA_DIR.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+
+                local_save_df.to_csv(
+                    LATEST_PREDICTION_PATH,
+                    index=False,
+                    encoding="utf-8-sig",
+                )
+
+                st.session_state[
+                    "latest_prediction_df"
+                ] = local_save_df
+
+            except Exception:
+                pass
 
         status.update(
             label=(
-                "✅ 예측 완료 · "
-                "마지막 예측 결과 GitHub 저장 완료"
+                "✅ 최근 40일 자동 수집 · "
+                "파생변수 생성 · 환경 취약도 예측 완료"
             ),
             state="complete",
             expanded=False,
@@ -1131,7 +1843,7 @@ if run_clicked:
 
     except Exception as e:
         st.error(
-            f"❌ 예측 실행 실패: {e}"
+            f"❌ 자동 수집 및 예측 실행 실패: {e}"
         )
 
 
@@ -1157,10 +1869,11 @@ if result_df is None:
     st.markdown(
         """
         <div class="prediction-hero">
-            <h3>예측 실행 버튼을 눌러 결과를 확인하세요.</h3>
+            <h3>위의 자동 수집·예측 버튼을 눌러주세요.</h3>
             <p>
-                모델은 최근 40일 환경 파생변수와 각 문화유산의
-                재질·노출환경을 결합하여 안전·주의·위험 등급을 분류합니다.
+                별도의 최근 40일 데이터 페이지를 먼저 실행할 필요 없이,
+                전일 기준 최근 40일 자료 수집부터 파생변수 생성과
+                문화유산별 안전·주의·위험 예측까지 한 번에 처리합니다.
             </p>
         </div>
         """,
@@ -1186,6 +1899,10 @@ github_save_result = st.session_state.get(
     "heritage_prediction_github"
 )
 
+github_save_error = st.session_state.get(
+    "heritage_prediction_github_error"
+)
+
 if github_save_result:
     st.success(
         "☁️ 마지막 예측 결과 저장 완료 · "
@@ -1193,11 +1910,20 @@ if github_save_result:
         f"{github_save_result['status']} · "
         f"{github_save_result['branch']} 브랜치"
     )
+
+elif github_save_error:
+    st.warning(
+        "⚠️ 환경 취약도 예측은 정상 완료되었지만 "
+        "GitHub 자동 저장에는 실패했습니다. "
+        "현재 세션과 로컬 latest_prediction.csv 결과는 유지됩니다.\n\n"
+        f"GitHub 저장 오류: {github_save_error}"
+    )
+
 else:
     st.info(
-        "ℹ️ 예측을 실행하면 마지막 결과가 "
-        "data/processed/latest_prediction.csv 로 저장되고 "
-        "GitHub에도 자동 업로드됩니다."
+        "ℹ️ 예측을 실행하면 최근 40일 환경 데이터를 자동 수집한 뒤 "
+        "결과를 data/processed/latest_prediction.csv 로 저장하고 "
+        "GitHub에도 자동 업로드합니다."
     )
 
 total_count = len(
@@ -1946,30 +2672,41 @@ with st.expander(
     expanded=False,
 ):
 
-    target_environment = (
-        select_target_environment(
-            realtime_df,
-            prediction_date,
+    realtime_for_view = st.session_state.get(
+        "recent_40_environment"
+    )
+
+    if realtime_for_view is None:
+        st.info(
+            "현재 세션에 최근 40일 환경 Feature가 없습니다. "
+            "상단의 자동 수집·예측 버튼을 다시 실행해주세요."
         )
-    )
 
-    selected_feature_view = (
-        target_environment
-        .T
-        .reset_index()
-    )
+    else:
+        target_environment = (
+            select_target_environment(
+                realtime_for_view,
+                prediction_date,
+            )
+        )
 
-    selected_feature_view.columns = [
-        "Feature",
-        "값",
-    ]
+        selected_feature_view = (
+            target_environment
+            .T
+            .reset_index()
+        )
 
-    st.dataframe(
-        selected_feature_view,
-        use_container_width=True,
-        hide_index=True,
-        height=520,
-    )
+        selected_feature_view.columns = [
+            "Feature",
+            "값",
+        ]
+
+        st.dataframe(
+            selected_feature_view,
+            use_container_width=True,
+            hide_index=True,
+            height=520,
+        )
 
 
 # ============================================================
