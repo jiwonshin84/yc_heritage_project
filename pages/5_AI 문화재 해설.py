@@ -95,11 +95,14 @@ def clear_ai_cache():
 # =====================================================
 # 4. 음성 출력용 JavaScript 함수
 # =====================================================
-def render_tts_button(text):
+def render_auto_tts_with_stop(text):
     """
-    브라우저 정책상 Streamlit 버튼 클릭 후 rerun된 iframe에서
-    speechSynthesis.speak()를 자동 실행하면 차단될 수 있다.
-    따라서 iframe 내부의 실제 HTML 버튼 클릭 이벤트에서 직접 TTS를 실행한다.
+    AI 도슨트 해설 Dialog가 열리면 음성을 자동 재생하고,
+    같은 HTML 컴포넌트 안의 '음성 중지' 버튼으로 재생을 멈춘다.
+
+    브라우저 정책에 따라 자동 재생이 제한될 수 있으나,
+    사용자의 'AI 도슨트 해설 생성' 클릭 직후 Dialog가 열리는 흐름에서
+    가능한 한 자동 재생되도록 구성한다.
     """
     if not text:
         return
@@ -112,7 +115,7 @@ def render_tts_button(text):
     tts_html = f"""
     <div style="width:100%; font-family:Arial, sans-serif;">
         <button
-            id="ttsButton"
+            id="stopTtsButton"
             style="
                 width:100%;
                 height:40px;
@@ -125,61 +128,85 @@ def render_tts_button(text):
                 cursor:pointer;
             "
         >
-            🔊 해설 듣기
+            ⏹ 음성 중지
         </button>
 
         <script>
-            const button = document.getElementById("ttsButton");
+            let currentUtterance = null;
+            let hasStarted = false;
 
-            button.addEventListener("click", function() {{
-                if (!("speechSynthesis" in window)) {{
-                    alert("이 브라우저는 음성 읽기 기능을 지원하지 않습니다.");
+            function findKoreanVoice() {{
+                const voices = window.speechSynthesis.getVoices();
+
+                return (
+                    voices.find(
+                        voice =>
+                            voice.lang &&
+                            voice.lang.toLowerCase().startsWith("ko")
+                    ) || null
+                );
+            }}
+
+            function startSpeech() {{
+                if (hasStarted) {{
                     return;
                 }}
 
-                window.speechSynthesis.cancel();
-
-                const utterance = new SpeechSynthesisUtterance({js_text});
-                utterance.lang = "ko-KR";
-                utterance.rate = 1.0;
-                utterance.pitch = 1.0;
-                utterance.volume = 1.0;
-
-                const voices = window.speechSynthesis.getVoices();
-                const koreanVoice = voices.find(
-                    voice =>
-                        voice.lang &&
-                        voice.lang.toLowerCase().startsWith("ko")
-                );
-
-                if (koreanVoice) {{
-                    utterance.voice = koreanVoice;
+                if (!("speechSynthesis" in window)) {{
+                    return;
                 }}
 
-                utterance.onstart = function() {{
-                    button.innerText = "⏹ 해설 재생 중";
+                hasStarted = true;
+
+                window.speechSynthesis.cancel();
+
+                currentUtterance = new SpeechSynthesisUtterance({js_text});
+                currentUtterance.lang = "ko-KR";
+                currentUtterance.rate = 1.0;
+                currentUtterance.pitch = 1.0;
+                currentUtterance.volume = 1.0;
+
+                const koreanVoice = findKoreanVoice();
+
+                if (koreanVoice) {{
+                    currentUtterance.voice = koreanVoice;
+                }}
+
+                currentUtterance.onend = function() {{
+                    document.getElementById("stopTtsButton").innerText =
+                        "✓ 음성 재생 완료";
                 }};
 
-                utterance.onend = function() {{
-                    button.innerText = "🔊 해설 듣기";
-                }};
-
-                utterance.onerror = function(event) {{
-                    button.innerText = "🔊 해설 듣기";
+                currentUtterance.onerror = function(event) {{
                     console.error("TTS 오류:", event);
-                    alert(
-                        "음성 재생이 차단되었거나 한국어 음성 엔진을 사용할 수 없습니다."
-                    );
+
+                    document.getElementById("stopTtsButton").innerText =
+                        "⏹ 음성 중지";
                 }};
 
-                window.speechSynthesis.speak(utterance);
-            }});
+                window.speechSynthesis.speak(currentUtterance);
+            }}
 
-            // 일부 브라우저는 getVoices()가 늦게 준비됨
+            document
+                .getElementById("stopTtsButton")
+                .addEventListener("click", function() {{
+                    if ("speechSynthesis" in window) {{
+                        window.speechSynthesis.cancel();
+                    }}
+
+                    this.innerText = "✓ 음성 중지됨";
+                }});
+
+            // 한국어 음성 목록이 즉시 준비되지 않는 브라우저 대응
             if ("speechSynthesis" in window) {{
+                window.speechSynthesis.getVoices();
+
                 window.speechSynthesis.onvoiceschanged = function() {{
                     window.speechSynthesis.getVoices();
                 }};
+
+                // Dialog 렌더링 직후 자동 재생
+                setTimeout(startSpeech, 250);
             }}
         </script>
     </div>
@@ -197,23 +224,30 @@ def render_tts_button(text):
 def generate_docent_text(heritage, content_text):
     """
     국가유산 공공데이터의 원문 설명만을 근거로
-    3~4문장의 도슨트 해설을 생성한다.
+    방문객이 이해하기 쉬운 상세 도슨트 해설을 생성한다.
     """
     prompt = f"""
-당신은 영천 지역 국가유산을 소개하는 AI 해설사입니다.
+당신은 영천 지역 국가유산을 소개하는 전문 AI 도슨트입니다.
 
-아래에 제공된 국가유산 자료만을 근거로 답변하세요.
-자료에 없는 역사적 사실, 연도, 인물, 사건을 임의로 추가하거나 추측하지 마세요.
-제공된 자료만으로 확인하기 어려운 내용은 만들어내지 마세요.
+반드시 아래에 제공된 국가유산 공공데이터 원문만을 근거로 설명하세요.
+자료에 없는 역사적 사실, 연도, 인물, 사건, 건축 양식 등을 임의로 추가하거나 추측하지 마세요.
+원문에서 확인되지 않는 내용은 사실처럼 단정하지 마세요.
 
 문화유산명: {heritage}
 
 [국가유산 공공데이터 원문]
 {content_text}
 
-위 자료를 바탕으로 일반 방문객이 이해하기 쉽도록
-역사적 배경과 주요 특징을 중심으로 3~4문장으로 설명하세요.
-과도하게 전문적인 용어는 피하고 자연스러운 한국어로 작성하세요.
+다음 기준에 따라 방문객에게 설명하는 자연스러운 해설문을 작성하세요.
+
+1. 이 국가유산이 어떤 유산인지 먼저 쉽게 소개합니다.
+2. 원문에 나타난 시대적·역사적 배경을 설명합니다.
+3. 구조, 형태, 특징, 보존 상태 등 원문에서 확인되는 핵심 특징을 구체적으로 설명합니다.
+4. 왜 주목할 만한 유산인지 원문에 근거하여 의미를 설명합니다.
+5. 일반 방문객도 쉽게 이해할 수 있는 표현을 사용합니다.
+6. 약 6~8문장으로 충분히 상세하게 작성합니다.
+7. 문장을 지나치게 짧게 끊지 말고 자연스러운 도슨트 말투로 작성합니다.
+8. 자료에 없는 내용은 만들지 않습니다.
 """.strip()
 
     response = model.generate_content(
@@ -230,15 +264,14 @@ def generate_docent_text(heritage, content_text):
 
 def generate_qa_text(heritage, user_q, content_text):
     """
-    사용자의 질문에 대해 제공된 국가유산 원문 범위 안에서 답변한다.
+    사용자의 질문에 대해 제공된 국가유산 원문을 근거로
+    가능한 한 상세하고 이해하기 쉽게 답변한다.
     """
     prompt = f"""
-당신은 영천 지역 국가유산을 소개하는 AI 해설사입니다.
+당신은 영천 지역 국가유산을 설명하는 전문 AI 해설사입니다.
 
-다음 국가유산 공공데이터 원문만을 근거로 사용자의 질문에 답하세요.
-자료에 없는 내용을 추측하거나 만들어내지 마세요.
-질문의 답을 원문에서 확인할 수 없는 경우에는
-'제공된 국가유산 자료에서는 확인하기 어렵습니다.'라고 명확히 답하세요.
+아래 국가유산 공공데이터 원문을 가장 중요한 근거로 사용하여
+사용자의 질문에 충분히 상세하게 답변하세요.
 
 문화유산명: {heritage}
 
@@ -248,7 +281,16 @@ def generate_qa_text(heritage, user_q, content_text):
 [사용자 질문]
 {user_q}
 
-답변은 간결하고 이해하기 쉬운 한국어로 작성하세요.
+답변 작성 기준:
+1. 먼저 사용자의 질문에 직접 답합니다.
+2. 원문에서 확인되는 근거와 관련 내용을 구체적으로 설명합니다.
+3. 질문과 관련된 역사적 의미, 특징, 구조, 시대, 보존 상태 등이 원문에 있다면 함께 연결하여 설명합니다.
+4. 보통 5~8문장 정도로 상세하게 답변합니다.
+5. 필요하면 짧은 문단으로 나누어 읽기 쉽게 작성합니다.
+6. 원문에 답변 근거가 부족한 경우에는 부족한 부분을 명확히 밝힙니다.
+7. 원문에서 확인할 수 없는 사실을 임의로 만들어내거나 단정하지 않습니다.
+8. 질문 일부는 원문으로 답할 수 있고 일부는 답할 수 없다면, 확인 가능한 내용과 확인하기 어려운 내용을 구분하여 설명합니다.
+9. 일반 방문객이나 학생이 이해하기 쉬운 한국어를 사용합니다.
 """.strip()
 
     response = model.generate_content(
@@ -312,8 +354,9 @@ def show_docent_dialog(
     )
 
     with btn_col1:
-        # 브라우저의 사용자 클릭 이벤트 안에서 직접 TTS 실행
-        render_tts_button(
+        # AI 도슨트 해설 생성 직후 자동 음성 재생
+        # 별도의 '해설 듣기' 버튼 없이 '음성 중지' 버튼만 표시
+        render_auto_tts_with_stop(
             docent_text
         )
 
@@ -365,12 +408,14 @@ def show_qa_dialog(
         st.session_state.qa_cache
     )
 
-    st.success(
+    st.markdown("#### 답변")
+    st.markdown(
         qa_text
     )
 
     st.caption(
-        "※ AI 답변은 현재 선택한 국가유산의 공공데이터 원문을 바탕으로 생성됩니다."
+        "※ AI 답변은 현재 선택한 국가유산의 공공데이터 원문을 중심으로 생성됩니다. "
+        "원문에서 확인하기 어려운 내용은 답변에서 별도로 구분합니다."
     )
 
     if st.button(
@@ -524,6 +569,7 @@ try:
                 "질문하기",
                 placeholder="궁금한 점을 입력하세요",
                 label_visibility="collapsed",
+                key="heritage_question_input",
             )
 
         with q_btn_col:
@@ -669,16 +715,20 @@ try:
             )
 
         else:
-            # 한 번에 하나의 Dialog만 열리도록 상호 배타적으로 처리
+            # 입력된 질문을 먼저 세션에 저장한 뒤 Dialog를 연다.
+            # Streamlit rerun 이후에도 질문 내용이 유지되도록 처리한다.
+            new_question = user_q.strip()
+
+            if (
+                st.session_state.get("current_user_q", "")
+                != new_question
+            ):
+                if "qa_cache" in st.session_state:
+                    del st.session_state.qa_cache
+
+            st.session_state.current_user_q = new_question
             st.session_state.open_qa = True
             st.session_state.open_docent = False
-            st.session_state.current_user_q = (
-                user_q.strip()
-            )
-
-            # 새 질문일 때 이전 답변 캐시 제거
-            if "qa_cache" in st.session_state:
-                del st.session_state.qa_cache
 
     # =================================================
     # Dialog 실행
