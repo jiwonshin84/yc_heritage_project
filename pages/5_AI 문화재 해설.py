@@ -905,30 +905,36 @@ try:
         )
 
     with header_col3:
-        q_in_col, q_btn_col = st.columns(
-            [
-                3,
-                1,
-            ],
-            gap="small",
-        )
-
-        with q_in_col:
-            user_q = st.text_input(
-                "질문하기",
-                placeholder=(
-                    "예: 이 문화유산의 역사적 의미와 "
-                    "관련 연구 내용을 알려주세요"
-                ),
-                label_visibility="collapsed",
-                key="heritage_question_input",
+        # 질문 입력창과 전송 버튼을 form으로 묶어
+        # 버튼 클릭뿐 아니라 Enter 키로도 바로 전송되도록 처리
+        with st.form(
+            "heritage_question_form",
+            clear_on_submit=False,
+            border=False,
+        ):
+            q_in_col, q_btn_col = st.columns(
+                [
+                    3,
+                    1,
+                ],
+                gap="small",
             )
 
-        with q_btn_col:
-            question_clicked = st.button(
-                "질문 전송",
-                use_container_width=True,
-            )
+            with q_in_col:
+                user_q = st.text_input(
+                    "질문하기",
+                    placeholder=(
+                        "예: 이 문화유산의 역사적 의미와 "
+                        "관련 연구 내용을 알려주세요"
+                    ),
+                    label_visibility="collapsed",
+                )
+
+            with q_btn_col:
+                question_clicked = st.form_submit_button(
+                    "질문 전송",
+                    use_container_width=True,
+                )
 
     st.caption(
         "국가유산청 공공데이터를 기반으로 AI 도슨트 해설을 제공하며, "
