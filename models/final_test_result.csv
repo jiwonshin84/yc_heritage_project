@@ -1,0 +1,2 @@
+﻿Model,Train_Count,Test_Count,Test_Danger_Count,Accuracy,Macro_F1,Weighted_F1,Balanced_Accuracy,Safe_F1,Caution_F1,Danger_Precision,Danger_Recall,Danger_F1
+Gradient Boosting,32415,5475,9,0.9280365296803653,0.7510634187648049,0.9337968731249148,0.9617739103308454,0.958185053380783,0.7950052029136316,0.3333333333333333,1.0,0.5
