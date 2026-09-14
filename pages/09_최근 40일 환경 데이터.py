@@ -1,17 +1,12 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
-import time
-import urllib.parse
+from datetime import timedelta
 
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import requests
 import streamlit as st
-
-from utils.feature_engineering import create_environment_features
 
 
 # ============================================================
@@ -19,1375 +14,1321 @@ from utils.feature_engineering import create_environment_features
 # ============================================================
 
 st.set_page_config(
-    page_title="전일~40일전 환경 데이터",
-    page_icon="📅",
+    page_title="최근 40일 환경 데이터",
+    page_icon="🔵",
     layout="wide",
 )
 
-st.title("📅 예측용 전일~40일전 환경 데이터")
+st.title("🔵 최근 40일 환경 데이터")
 st.caption(
-    "문화재 환경 취약도 예측에 사용하는 최근 40일의 "
-    "기상·대기환경 자료와 7일·28일 파생변수를 확인합니다."
+    "문화유산 환경 취약도 예측 과정에서 자동 수집된 최근 40일 "
+    "기상·대기환경 데이터와 7일·28일 파생변수를 시각화합니다."
 )
 
 st.info(
-    "📌 28일 rolling 파생변수를 안정적으로 계산하기 위해 "
-    "예측 기준일을 포함하여 최근 40일 데이터를 수집합니다. "
-    "이 페이지에서는 모델을 새로 학습하거나 문화재별 예측을 실행하지 않습니다."
+    "📌 이 페이지에서는 데이터를 새로 수집하지 않습니다. "
+    "먼저 **문화유산 취약도 예측** 페이지에서 자동 수집·예측을 실행하면 "
+    "같은 세션에 저장된 최근 40일 환경 데이터를 불러와 분석합니다."
 )
 
 
 # ============================================================
-# 2. API / 기본 설정
+# 2. 화면 스타일
 # ============================================================
 
-ASOS_URL = (
-    "https://apis.data.go.kr/"
-    "1360000/AsosDalyInfoService/getWthrDataList"
+st.markdown(
+    """
+    <style>
+        .block-container {
+            padding-top: 1rem !important;
+            padding-bottom: 2rem !important;
+        }
+
+        .data-card {
+            padding: 14px 16px;
+            border-radius: 14px;
+            border: 1px solid rgba(128,128,128,0.22);
+            background: rgba(128,128,128,0.04);
+            margin-bottom: 10px;
+        }
+
+        .data-card h4 {
+            margin: 0 0 4px 0;
+        }
+
+        .data-card p {
+            margin: 0;
+            opacity: 0.82;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
-
-AIR_URL = (
-    "https://apis.data.go.kr/"
-    "B552584/ArpltnStatsSvc/getMsrstnAcctoRDyrg"
-)
-
-STN_ID = "281"  # 영천 ASOS
-
-# 기존 SERVICE_KEY를 사용 중인 웹앱도 동작하도록 fallback 지원
-ASOS_SERVICE_KEY = st.secrets.get(
-    "ASOS_SERVICE_KEY",
-    st.secrets.get("SERVICE_KEY", ""),
-)
-
-AIR_SERVICE_KEY = st.secrets.get(
-    "AIR_SERVICE_KEY",
-    st.secrets.get("SERVICE_KEY", ""),
-)
-
-# 측정소 명칭은 환경에 따라 "영천" / "영천시"가 다를 수 있어
-# Secrets로 변경 가능하도록 구성
-AIR_STATION_NAME = st.secrets.get(
-    "AIR_STATION_NAME",
-    "영천",
-)
-
-TODAY = date.today()
-DEFAULT_TARGET_DATE = TODAY - timedelta(days=1)
 
 
 # ============================================================
-# 화면/다운로드용 한글 컬럼명
-# ※ realtime_df 내부 컬럼명은 영문 그대로 유지합니다.
+# 3. 한글 표시명
 # ============================================================
 
 COLUMN_KR = {
-    # 날짜
     "date": "날짜",
 
-    # 기상 원자료
+    # 원자료
     "temp_avg": "평균기온(℃)",
     "temp_max": "최고기온(℃)",
     "temp_min": "최저기온(℃)",
     "humidity": "평균습도(%)",
-    "rainfall": "일강수량(mm)",
+    "rainfall": "강수량(mm)",
     "wind_speed": "평균풍속(m/s)",
-    "sunshine_hours": "일조시간(시간)",
-    "ground_temp": "평균지면온도(℃)",
+    "sunshine_hours": "일조시간(hr)",
+    "ground_temp": "지면온도(℃)",
+    "pm10": "PM10(㎍/㎥)",
+    "pm25": "PM2.5(㎍/㎥)",
+    "o3": "O₃(ppm)",
+    "no2": "NO₂(ppm)",
+    "co": "CO(ppm)",
+    "so2": "SO₂(ppm)",
 
-    # 대기환경 원자료
-    "pm10": "미세먼지 PM10(㎍/㎥)",
-    "pm25": "초미세먼지 PM2.5(㎍/㎥)",
-    "o3": "오존 O₃(ppm)",
-    "no2": "이산화질소 NO₂(ppm)",
-    "co": "일산화탄소 CO(ppm)",
-    "so2": "아황산가스 SO₂(ppm)",
-
-    # 기온·습도 파생변수
+    # 기본 파생변수
     "temp_range": "일교차(℃)",
-    "temp_change": "기온 변화량(℃)",
-    "humidity_change": "습도 변화량(%p)",
-    "humidity_std3": "최근 3일 습도 변동성",
+    "temp_change": "평균기온 변화량",
+    "humidity_change": "습도 변화량",
+    "humidity_std3": "3일 습도 변동성",
+    "rainfall_7d": "최근 7일 누적 강수량",
 
-    # 강수
-    "rainfall_7d": "최근 7일 누적강수량(mm)",
+    # 습도 지속성
+    "rh60_days_7": "최근 7일 RH>60% 일수",
+    "rh60_days_28": "최근 28일 RH>60% 일수",
+    "rh75_days_7": "최근 7일 RH≥75% 일수",
+    "rh75_days_28": "최근 28일 RH≥75% 일수",
+    "rh95_days_7": "최근 7일 RH≥95% 일수",
+    "rh95_days_28": "최근 28일 RH≥95% 일수",
+    "rh75_consecutive_days": "RH≥75% 연속일수",
+    "rh95_consecutive_days": "RH≥95% 연속일수",
 
-    # 습도 조건
-    "rh60_days_28": "최근 28일 습도 60% 이상 일수",
-    "rh70_days_28": "최근 28일 습도 70% 이상 일수",
-    "rh75_days_28": "최근 28일 습도 75% 이상 일수",
-    "rh95_days_28": "최근 28일 습도 95% 이상 일수",
-
-    # 연속 고습도
-    "rh70_consecutive_days": "습도 70% 이상 연속일수",
-    "rh75_consecutive_days": "습도 75% 이상 연속일수",
-    "rh95_consecutive_days": "습도 95% 이상 연속일수",
-
-    # 재질 관련 환경지표
+    # 목조
+    "wood_mold_condition": "목조 곰팡이 조건",
+    "wood_mold_days_7": "최근 7일 목조 곰팡이 조건 일수",
     "wood_mold_days_28": "최근 28일 목조 곰팡이 조건 일수",
-    "metal_so2_humidity": "금속 고습도·SO₂ 복합지표",
 
-    # 미세먼지
-    "pm_total": "미세먼지 종합부하",
+    # 금속
+    "rh70_metal": "금속 RH≥70% 여부",
+    "rh70_days_7": "최근 7일 RH≥70% 일수",
+    "rh70_days_28": "최근 28일 RH≥70% 일수",
+    "rh70_consecutive_days": "RH≥70% 연속일수",
+    "metal_so2_humidity": "금속 고습·SO₂ 복합지표",
+
+    # 대기오염
+    "pm_total": "PM10+PM2.5",
     "pm_load_3d": "최근 3일 미세먼지 부하",
     "pm_load_7d": "최근 7일 미세먼지 부하",
-
-    # 대기오염 이동평균
     "so2_ma7": "최근 7일 SO₂ 평균",
     "no2_ma7": "최근 7일 NO₂ 평균",
     "o3_ma7": "최근 7일 O₃ 평균",
 
-    # 계절
+    # 기타
+    "temp_over_20": "20℃ 초과 여부",
+    "rh_over_60": "RH>60% 여부",
+    "rh75": "RH≥75% 여부",
+    "rh95": "RH≥95% 여부",
     "season": "계절",
+    "month": "월",
 }
 
 
 # ============================================================
-# 3. 안전한 숫자 변환
+# 4. 유틸리티
 # ============================================================
 
-def to_float(value):
-    """
-    API의 '', '-', None 등을 NaN으로 안전하게 변환.
-    """
-    if value in ("", "-", None):
-        return np.nan
+def safe_metric(value, digits=1, suffix=""):
+    if value is None or pd.isna(value):
+        return "-"
 
     try:
-        return float(value)
-    except (TypeError, ValueError):
-        return np.nan
+        return f"{float(value):.{digits}f}{suffix}"
+    except Exception:
+        return str(value)
 
 
-# ============================================================
-# 4. ASOS 최근 40일 수집
-# ============================================================
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def fetch_recent_weather(
-    target_date: date,
-) -> pd.DataFrame:
+def get_session_environment():
     """
-    예측 기준일 포함 최근 40일 ASOS 일자료 수집.
+    문화유산 취약도 예측 페이지에서 저장한 최근 40일 데이터를 읽는다.
     """
-
-    if not ASOS_SERVICE_KEY:
-        raise ValueError(
-            "Streamlit Secrets에 ASOS_SERVICE_KEY "
-            "또는 SERVICE_KEY가 없습니다."
-        )
-
-    start_date = target_date - timedelta(days=39)
-
-    params = {
-        "serviceKey": ASOS_SERVICE_KEY,
-        "numOfRows": "100",
-        "pageNo": "1",
-        "dataType": "JSON",
-        "dataCd": "ASOS",
-        "dateCd": "DAY",
-        "startDt": start_date.strftime("%Y%m%d"),
-        "endDt": target_date.strftime("%Y%m%d"),
-        "stnIds": STN_ID,
-    }
-
-    response = requests.get(
-        ASOS_URL,
-        params=params,
-        timeout=40,
+    realtime_df = st.session_state.get(
+        "recent_40_environment"
     )
 
-    response.raise_for_status()
-
-    try:
-        result = response.json()
-    except Exception as e:
-        raise RuntimeError(
-            "ASOS API 응답을 JSON으로 해석할 수 없습니다."
-        ) from e
-
-    items = (
-        result.get("response", {})
-        .get("body", {})
-        .get("items", {})
-        .get("item", [])
+    weather_df = st.session_state.get(
+        "recent_40_weather"
     )
 
-    if not items:
-        raise RuntimeError(
-            f"ASOS 데이터가 없습니다: "
-            f"{start_date} ~ {target_date}"
-        )
-
-    weather = pd.DataFrame(items)
-
-    required_cols = [
-        "tm",
-        "avgTa",
-        "maxTa",
-        "minTa",
-        "avgRhm",
-        "sumRn",
-        "avgWs",
-        "sumSsHr",
-        "avgTs",
-    ]
-
-    missing_cols = [
-        col
-        for col in required_cols
-        if col not in weather.columns
-    ]
-
-    if missing_cols:
-        raise ValueError(
-            "ASOS 응답에 필요한 컬럼이 없습니다: "
-            f"{missing_cols}"
-        )
-
-    weather = weather[
-        required_cols
-    ].copy()
-
-    # sumSsHr = 일조시간
-    weather.columns = [
-        "date",
-        "temp_avg",
-        "temp_max",
-        "temp_min",
-        "humidity",
-        "rainfall",
-        "wind_speed",
-        "sunshine_hours",
-        "ground_temp",
-    ]
-
-    weather["date"] = pd.to_datetime(
-        weather["date"],
-        errors="coerce",
-    ).dt.floor("D")
-
-    for col in [
-        "temp_avg",
-        "temp_max",
-        "temp_min",
-        "humidity",
-        "rainfall",
-        "wind_speed",
-        "sunshine_hours",
-        "ground_temp",
-    ]:
-        weather[col] = pd.to_numeric(
-            weather[col],
-            errors="coerce",
-        )
-
-    # 강수량 공백은 무강수 0 mm로 처리
-    weather["rainfall"] = (
-        weather["rainfall"]
-        .fillna(0)
+    air_df = st.session_state.get(
+        "recent_40_air"
     )
 
-    weather = (
-        weather
-        .dropna(subset=["date"])
-        .sort_values("date")
-        .drop_duplicates(
-            subset=["date"],
-            keep="last",
+    quality = st.session_state.get(
+        "recent_40_quality"
+    )
+
+    target_date = st.session_state.get(
+        "recent_40_target_date"
+    )
+
+    air_station = st.session_state.get(
+        "recent_40_air_station"
+    )
+
+    if (
+        realtime_df is None
+        or not isinstance(
+            realtime_df,
+            pd.DataFrame,
         )
-        .reset_index(drop=True)
-    )
-
-    return weather
-
-
-# ============================================================
-# 5. AirKorea 최근 40일 수집
-#    7일 단위로 나누어 요청 + 재시도
-# ============================================================
-
-def _request_air_chunk(
-    start_date: date,
-    end_date: date,
-    station_name: str,
-) -> list[dict]:
-    """
-    AirKorea API를 한 구간에 대해 호출.
-    """
-
-    safe_key = urllib.parse.unquote(
-        AIR_SERVICE_KEY
-    )
-
-    params = {
-        "serviceKey": safe_key,
-        "returnType": "json",
-        "numOfRows": "200",
-        "pageNo": "1",
-        "inqBginDt": start_date.strftime("%Y%m%d"),
-        "inqEndDt": end_date.strftime("%Y%m%d"),
-        "msrstnName": station_name,
-    }
-
-    last_error = None
-
-    # 총 4회 시도
-    for retry_no, wait_seconds in enumerate(
-        [0, 3, 6, 10],
-        start=1,
+        or realtime_df.empty
     ):
-        if wait_seconds:
-            time.sleep(wait_seconds)
-
-        try:
-            response = requests.get(
-                AIR_URL,
-                params=params,
-                timeout=60,
-            )
-
-            response.raise_for_status()
-
-            if not response.text.strip().startswith("{"):
-                raise RuntimeError(
-                    "AirKorea API가 JSON이 아닌 응답을 반환했습니다."
-                )
-
-            data = response.json()
-
-            items = (
-                data.get("response", {})
-                .get("body", {})
-                .get("items", [])
-            )
-
-            return items or []
-
-        except Exception as e:
-            last_error = e
-
-    raise RuntimeError(
-        f"AirKorea 수집 실패 "
-        f"{start_date}~{end_date}: {last_error}"
-    )
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def fetch_recent_air(
-    target_date: date,
-) -> tuple[pd.DataFrame, str]:
-    """
-    최근 40일 AirKorea 자료를 7일 단위로 수집.
-    기본 측정소에서 결과가 없으면 "영천시"를 한 번 더 시도한다.
-    """
-
-    if not AIR_SERVICE_KEY:
-        raise ValueError(
-            "Streamlit Secrets에 AIR_SERVICE_KEY "
-            "또는 SERVICE_KEY가 없습니다."
+        return (
+            None,
+            weather_df,
+            air_df,
+            quality,
+            target_date,
+            air_station,
         )
 
-    start_date = target_date - timedelta(days=39)
+    df = realtime_df.copy()
 
-    station_candidates = [
-        AIR_STATION_NAME,
-    ]
-
-    if AIR_STATION_NAME != "영천시":
-        station_candidates.append("영천시")
-
-    if AIR_STATION_NAME != "영천":
-        station_candidates.append("영천")
-
-    for station_name in station_candidates:
-        all_items = []
-
-        chunk_start = start_date
-
-        while chunk_start <= target_date:
-            chunk_end = min(
-                chunk_start + timedelta(days=6),
-                target_date,
-            )
-
-            items = _request_air_chunk(
-                chunk_start,
-                chunk_end,
-                station_name,
-            )
-
-            all_items.extend(items)
-
-            chunk_start = (
-                chunk_end
-                + timedelta(days=1)
-            )
-
-        if not all_items:
-            continue
-
-        air = pd.DataFrame(
-            all_items
-        )
-
-        rename_map = {
-            "msurDt": "date",
-            "pm10Value": "pm10",
-            "pm25Value": "pm25",
-            "o3Value": "o3",
-            "no2Value": "no2",
-            "coValue": "co",
-            "so2Value": "so2",
-        }
-
-        air = air.rename(
-            columns=rename_map
-        )
-
-        required_cols = [
-            "date",
-            "pm10",
-            "pm25",
-            "o3",
-            "no2",
-            "co",
-            "so2",
-        ]
-
-        for col in required_cols:
-            if col not in air.columns:
-                air[col] = np.nan
-
-        air = air[
-            required_cols
-        ].copy()
-
-        air["date"] = pd.to_datetime(
-            air["date"],
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(
+            df["date"],
             errors="coerce",
-        ).dt.floor("D")
+        )
 
-        for col in [
-            "pm10",
-            "pm25",
-            "o3",
-            "no2",
-            "co",
-            "so2",
-        ]:
-            air[col] = (
-                air[col]
-                .replace(
-                    ["-", "", "null", "None"],
-                    np.nan,
-                )
-            )
-
-            air[col] = pd.to_numeric(
-                air[col],
-                errors="coerce",
-            )
-
-        air = (
-            air
+        df = (
+            df
             .dropna(subset=["date"])
-            .groupby(
-                "date",
-                as_index=False,
-            )
-            .mean(
-                numeric_only=True
-            )
             .sort_values("date")
             .reset_index(drop=True)
         )
 
-        if not air.empty:
-            return air, station_name
-
-    raise RuntimeError(
-        "영천 대기환경 자료를 찾지 못했습니다. "
-        "AIR_STATION_NAME 설정을 확인하세요."
+    return (
+        df,
+        weather_df,
+        air_df,
+        quality,
+        target_date,
+        air_station,
     )
 
 
 # ============================================================
-# 6. 기상 + 대기환경 전처리 및 파생변수
+# 5. 세션 데이터 불러오기
 # ============================================================
 
-def prepare_recent_environment(
-    weather: pd.DataFrame,
-    air: pd.DataFrame,
-) -> tuple[pd.DataFrame, dict]:
-    """
-    학습 데이터와 동일한 방식으로 최근 환경자료를 정리하고
-    create_environment_features()를 적용한다.
-    """
+(
+    realtime_df,
+    weather_df,
+    air_df,
+    quality,
+    target_date,
+    air_station,
+) = get_session_environment()
 
-    if weather.empty:
-        raise ValueError(
-            "기상 데이터가 없습니다."
-        )
 
-    if air.empty:
-        raise ValueError(
-            "대기환경 데이터가 없습니다."
-        )
-
-    merged = pd.merge(
-        weather,
-        air,
-        on="date",
-        how="left",
+if realtime_df is None:
+    st.warning(
+        "⚠️ 현재 세션에 최근 40일 환경 데이터가 없습니다."
     )
 
-    merged = (
-        merged
-        .sort_values("date")
-        .reset_index(drop=True)
+    st.markdown(
+        """
+        <div class="data-card">
+            <h4>먼저 문화유산 취약도 예측을 실행해주세요.</h4>
+            <p>
+                예측 페이지에서 버튼을 누르면 전일 기준 최근 40일 환경 데이터를
+                자동 수집하고 파생변수를 생성합니다. 그 후 이 페이지로 이동하면
+                수집된 자료를 바로 시각화합니다.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    # --------------------------------------------------------
-    # 병합 전 품질 정보
-    # --------------------------------------------------------
+    st.stop()
 
-    quality = {
-        "weather_days": len(weather),
-        "air_days": len(air),
-        "merged_days": len(merged),
-        "air_missing_before_ffill": int(
-            merged[
-                [
-                    "pm10",
-                    "pm25",
-                    "o3",
-                    "no2",
-                    "co",
-                    "so2",
-                ]
-            ]
-            .isna()
-            .any(axis=1)
-            .sum()
-        ),
-    }
 
-    # --------------------------------------------------------
-    # 이상치 처리
-    # --------------------------------------------------------
+# ============================================================
+# 6. 상단 수집 현황
+# ============================================================
 
-    non_negative_cols = [
-        "rainfall",
-        "wind_speed",
-        "sunshine_hours",
-        "humidity",
-        "pm10",
-        "pm25",
-        "o3",
-        "no2",
-        "co",
-        "so2",
-    ]
+loaded_target_date = pd.Timestamp(
+    target_date
+) if target_date is not None else realtime_df["date"].max()
 
-    for col in non_negative_cols:
-        if col in merged.columns:
-            merged.loc[
-                merged[col] < 0,
-                col,
-            ] = np.nan
+start_date = realtime_df["date"].min()
+end_date = realtime_df["date"].max()
 
-    merged.loc[
-        (merged["humidity"] < 0)
-        | (merged["humidity"] > 100),
-        "humidity",
-    ] = np.nan
+st.markdown("---")
+st.subheader("✅ 최근 40일 데이터 준비 현황")
 
-    merged.loc[
-        merged["pm10"] > 1000,
-        "pm10",
-    ] = np.nan
+m1, m2, m3, m4, m5 = st.columns(5)
 
-    merged.loc[
-        merged["pm25"] > 500,
-        "pm25",
-    ] = np.nan
+m1.metric(
+    "사용 가능 일수",
+    f"{len(realtime_df)}일",
+)
 
-    merged["rainfall"] = (
-        merged["rainfall"]
-        .fillna(0)
+m2.metric(
+    "시작일",
+    start_date.strftime("%Y-%m-%d"),
+)
+
+m3.metric(
+    "예측 기준일",
+    loaded_target_date.strftime("%Y-%m-%d"),
+)
+
+m4.metric(
+    "AirKorea 측정소",
+    str(air_station) if air_station else "-",
+)
+
+missing_days = (
+    quality.get(
+        "missing_calendar_days",
+        0,
+    )
+    if isinstance(
+        quality,
+        dict,
+    )
+    else 0
+)
+
+m5.metric(
+    "날짜 누락",
+    f"{missing_days}일",
+)
+
+if len(realtime_df) >= 28:
+    st.success(
+        "✅ 28일 rolling 파생변수를 계산할 수 있는 충분한 데이터가 확보되었습니다."
     )
 
-    # --------------------------------------------------------
-    # 과거값 기반 ffill
-    # bfill 사용 안 함: 미래 데이터 누출 방지
-    # --------------------------------------------------------
 
-    fill_cols = [
+# ============================================================
+# 7. 기준일 환경 요약
+# ============================================================
+
+target_rows = realtime_df.loc[
+    realtime_df["date"].dt.floor("D")
+    == loaded_target_date.floor("D")
+]
+
+if target_rows.empty:
+    target_row = realtime_df.iloc[-1]
+    st.warning(
+        "지정된 예측 기준일 행을 찾지 못해 현재 세션의 가장 최근 날짜를 표시합니다."
+    )
+else:
+    target_row = target_rows.iloc[-1]
+
+st.markdown("---")
+st.subheader(
+    f"📌 {pd.Timestamp(target_row['date']):%Y-%m-%d} 기준 환경 요약"
+)
+
+row1 = st.columns(6)
+
+row1[0].metric(
+    "평균기온",
+    safe_metric(
+        target_row.get("temp_avg"),
+        1,
+        " ℃",
+    ),
+)
+
+row1[1].metric(
+    "평균습도",
+    safe_metric(
+        target_row.get("humidity"),
+        1,
+        " %",
+    ),
+)
+
+row1[2].metric(
+    "강수량",
+    safe_metric(
+        target_row.get("rainfall"),
+        1,
+        " mm",
+    ),
+)
+
+row1[3].metric(
+    "PM10",
+    safe_metric(
+        target_row.get("pm10"),
+        1,
+        " ㎍/㎥",
+    ),
+)
+
+row1[4].metric(
+    "PM2.5",
+    safe_metric(
+        target_row.get("pm25"),
+        1,
+        " ㎍/㎥",
+    ),
+)
+
+row1[5].metric(
+    "SO₂",
+    safe_metric(
+        target_row.get("so2"),
+        4,
+        " ppm",
+    ),
+)
+
+row2 = st.columns(6)
+
+row2[0].metric(
+    "일교차",
+    safe_metric(
+        target_row.get("temp_range"),
+        1,
+        " ℃",
+    ),
+)
+
+row2[1].metric(
+    "7일 누적 강수",
+    safe_metric(
+        target_row.get("rainfall_7d"),
+        1,
+        " mm",
+    ),
+)
+
+row2[2].metric(
+    "28일 RH>60%",
+    safe_metric(
+        target_row.get("rh60_days_28"),
+        0,
+        "일",
+    ),
+)
+
+row2[3].metric(
+    "28일 RH≥75%",
+    safe_metric(
+        target_row.get("rh75_days_28"),
+        0,
+        "일",
+    ),
+)
+
+row2[4].metric(
+    "28일 RH≥95%",
+    safe_metric(
+        target_row.get("rh95_days_28"),
+        0,
+        "일",
+    ),
+)
+
+row2[5].metric(
+    "미세먼지 7일 부하",
+    safe_metric(
+        target_row.get("pm_load_7d"),
+        1,
+    ),
+)
+
+
+# ============================================================
+# 8. 기온·습도 추세
+# ============================================================
+
+st.markdown("---")
+st.subheader("🌡️ 기온·습도 변화")
+
+temp_cols = [
+    col
+    for col in [
         "temp_avg",
         "temp_max",
         "temp_min",
-        "humidity",
-        "wind_speed",
-        "sunshine_hours",
-        "ground_temp",
-        "pm10",
-        "pm25",
-        "o3",
-        "no2",
-        "co",
-        "so2",
     ]
+    if col in realtime_df.columns
+]
 
-    fill_cols = [
-        col
-        for col in fill_cols
-        if col in merged.columns
-    ]
+left_chart, right_chart = st.columns(2)
 
-    merged[fill_cols] = (
-        merged[fill_cols]
-        .ffill()
-    )
-
-    before_drop = len(
-        merged
-    )
-
-    # 시작 구간에서 과거값이 없어 채우지 못한 행 제거
-    merged = (
-        merged
-        .dropna(
-            subset=fill_cols
-        )
-        .reset_index(drop=True)
-    )
-
-    quality["initial_rows_removed"] = (
-        before_drop - len(merged)
-    )
-
-    # --------------------------------------------------------
-    # 최소 길이
-    # --------------------------------------------------------
-
-    if len(merged) < 28:
-        raise ValueError(
-            "전처리 후 사용 가능한 데이터가 "
-            f"{len(merged)}일뿐입니다. "
-            "28일 파생변수를 계산하려면 최소 28일이 필요합니다."
-        )
-
-    # --------------------------------------------------------
-    # 날짜 연속성 확인
-    # --------------------------------------------------------
-
-    expected_dates = pd.date_range(
-        merged["date"].min(),
-        merged["date"].max(),
-        freq="D",
-    )
-
-    missing_dates = expected_dates.difference(
-        merged["date"]
-    )
-
-    quality["missing_calendar_days"] = (
-        len(missing_dates)
-    )
-
-    # 실제 날짜가 누락되면 rolling 일수가 관측행 기준으로 바뀌므로 중단
-    if len(missing_dates) > 0:
-        raise ValueError(
-            "최근 환경 데이터에 날짜 누락이 있습니다. "
-            f"{len(missing_dates)}일 누락: "
-            f"{list(missing_dates[:10])}"
-        )
-
-    # --------------------------------------------------------
-    # 학습과 동일한 공통 파생변수
-    # --------------------------------------------------------
-
-    realtime_df = create_environment_features(
-        merged.copy(),
-        fill_remaining_numeric=False,
-    )
-
-    quality["usable_days"] = len(
-        realtime_df
-    )
-
-    return realtime_df, quality
-
-
-# ============================================================
-# 7. 화면 입력
-# ============================================================
-
-col_date, col_info = st.columns(
-    [1, 2],
-    vertical_alignment="bottom",
-)
-
-with col_date:
-    target_date = st.date_input(
-        "📌 예측 기준일",
-        value=DEFAULT_TARGET_DATE,
-        max_value=DEFAULT_TARGET_DATE,
-        help="기본값은 어제입니다. 오늘과 미래 날짜는 사용할 수 없습니다.",
-    )
-
-with col_info:
-    start_target_date = (
-        target_date
-        - timedelta(days=39)
-    )
-
-    st.write(
-        f"**수집 범위:** "
-        f"{start_target_date:%Y-%m-%d} ~ "
-        f"{target_date:%Y-%m-%d} "
-        f"(기준일 포함 40일)"
-    )
-
-
-# ============================================================
-# 8. 세션 상태
-# ============================================================
-
-if "recent_40_weather" not in st.session_state:
-    st.session_state.recent_40_weather = None
-
-if "recent_40_air" not in st.session_state:
-    st.session_state.recent_40_air = None
-
-if "recent_40_environment" not in st.session_state:
-    st.session_state.recent_40_environment = None
-
-if "recent_40_quality" not in st.session_state:
-    st.session_state.recent_40_quality = None
-
-if "recent_40_target_date" not in st.session_state:
-    st.session_state.recent_40_target_date = None
-
-if "recent_40_air_station" not in st.session_state:
-    st.session_state.recent_40_air_station = None
-
-
-# ============================================================
-# 9. 데이터 수집 실행
-# ============================================================
-
-if st.button(
-    "📡 최근 40일 환경 데이터 불러오기",
-    type="primary",
-    use_container_width=True,
-):
-    try:
-        status = st.status(
-            "최근 40일 환경 데이터 수집 준비 중...",
-            expanded=True,
-        )
-
-        status.update(
-            label="🌦 기상청 ASOS 최근 40일 수집 중...",
-            state="running",
-        )
-
-        weather = fetch_recent_weather(
-            target_date
-        )
-
-        status.update(
-            label="🌫 AirKorea 최근 40일 수집 중...",
-            state="running",
-        )
-
-        air, used_station = fetch_recent_air(
-            target_date
-        )
-
-        status.update(
-            label="🔗 기상·대기환경 병합 및 파생변수 생성 중...",
-            state="running",
-        )
-
-        realtime_df, quality = prepare_recent_environment(
-            weather,
-            air,
-        )
-
-        # 지정일 정확히 존재하는지 검사
-        target_rows = realtime_df.loc[
-            realtime_df["date"]
-            == pd.Timestamp(target_date)
-        ]
-
-        if target_rows.empty:
-            raise ValueError(
-                f"{target_date:%Y-%m-%d} 기준일의 "
-                "최종 환경 데이터가 없습니다. "
-                "이전 날짜를 임의로 대신 사용하지 않습니다."
-            )
-
-        # Prediction 페이지가 바로 재사용할 수 있도록 저장
-        st.session_state.recent_40_weather = weather
-        st.session_state.recent_40_air = air
-        st.session_state.recent_40_environment = realtime_df
-        st.session_state.recent_40_quality = quality
-        st.session_state.recent_40_target_date = target_date
-        st.session_state.recent_40_air_station = used_station
-
-        status.update(
-            label="✅ 최근 40일 예측용 환경 데이터 준비 완료",
-            state="complete",
-            expanded=False,
-        )
-
-        st.rerun()
-
-    except Exception as e:
-        st.error(
-            f"❌ 최근 40일 데이터 구축 실패: {e}"
-        )
-
-
-# ============================================================
-# 10. 결과 화면
-# ============================================================
-
-realtime_df = (
-    st.session_state.recent_40_environment
-)
-
-quality = (
-    st.session_state.recent_40_quality
-)
-
-loaded_target_date = (
-    st.session_state.recent_40_target_date
-)
-
-used_station = (
-    st.session_state.recent_40_air_station
-)
-
-
-if realtime_df is not None:
-
-    # ========================================================
-    # 10-1. 수집 상태
-    # ========================================================
-
-    st.markdown("---")
-    st.subheader("✅ 예측 입력 데이터 준비 현황")
-
-    m1, m2, m3, m4, m5 = st.columns(5)
-
-    m1.metric(
-        "사용 가능 일수",
-        f"{len(realtime_df)}일",
-    )
-
-    m2.metric(
-        "시작일",
-        realtime_df["date"]
-        .min()
-        .strftime("%Y-%m-%d"),
-    )
-
-    m3.metric(
-        "예측 기준일",
-        pd.Timestamp(
-            loaded_target_date
-        ).strftime("%Y-%m-%d"),
-    )
-
-    m4.metric(
-        "AirKorea 측정소",
-        str(used_station),
-    )
-
-    m5.metric(
-        "날짜 누락",
-        f"{quality['missing_calendar_days']}일",
-    )
-
-    if len(realtime_df) >= 28:
-        st.success(
-            "✅ 28일 rolling 파생변수를 계산할 수 있는 "
-            "충분한 데이터가 확보되었습니다."
-        )
-
-    # ========================================================
-    # 10-2. 기준일 환경 요약
-    # ========================================================
-
-    target_row_df = realtime_df.loc[
-        realtime_df["date"]
-        == pd.Timestamp(
-            loaded_target_date
-        )
-    ]
-
-    target_row = (
-        target_row_df.iloc[0]
-    )
-
-    st.markdown("---")
-    st.subheader(
-        f"📌 {pd.Timestamp(loaded_target_date):%Y-%m-%d} "
-        "기준 환경 요약"
-    )
-
-    row1 = st.columns(6)
-
-    row1[0].metric(
-        "평균기온",
-        f"{target_row['temp_avg']:.1f} ℃",
-    )
-
-    row1[1].metric(
-        "습도",
-        f"{target_row['humidity']:.1f} %",
-    )
-
-    row1[2].metric(
-        "일 강수량",
-        f"{target_row['rainfall']:.1f} mm",
-    )
-
-    row1[3].metric(
-        "PM10",
-        f"{target_row['pm10']:.1f}",
-    )
-
-    row1[4].metric(
-        "PM2.5",
-        f"{target_row['pm25']:.1f}",
-    )
-
-    row1[5].metric(
-        "SO₂",
-        f"{target_row['so2']:.4f}",
-    )
-
-    row2 = st.columns(6)
-
-    metric_specs = [
-        (
-            "최근 7일 강수",
-            "rainfall_7d",
-            "{:.1f} mm",
-        ),
-        (
-            "28일 RH≥75%",
-            "rh75_days_28",
-            "{:.0f}일",
-        ),
-        (
-            "RH≥75 연속",
-            "rh75_consecutive_days",
-            "{:.0f}일",
-        ),
-        (
-            "28일 목조 곰팡이",
-            "wood_mold_days_28",
-            "{:.0f}일",
-        ),
-        (
-            "28일 RH≥70%",
-            "rh70_days_28",
-            "{:.0f}일",
-        ),
-        (
-            "7일 PM 누적",
-            "pm_load_7d",
-            "{:.1f}",
-        ),
-    ]
-
-    for col, (
-        label,
-        feature,
-        fmt,
-    ) in zip(
-        row2,
-        metric_specs,
-    ):
-        if feature in target_row.index:
-            value = target_row[
-                feature
-            ]
-
-            col.metric(
-                label,
-                fmt.format(value),
-            )
-
-    # ========================================================
-    # 10-3. 추이 그래프
-    # ========================================================
-
-    st.markdown("---")
-    st.subheader("📈 최근 40일 환경 변화")
-
-    chart_col1, chart_col2 = st.columns(2)
-
-    with chart_col1:
-        fig_temp_hum = go.Figure()
-
-        fig_temp_hum.add_trace(
-            go.Scatter(
-                x=realtime_df["date"],
-                y=realtime_df["temp_avg"],
-                mode="lines+markers",
-                name="평균기온(℃)",
-                yaxis="y1",
-            )
-        )
-
-        fig_temp_hum.add_trace(
-            go.Scatter(
-                x=realtime_df["date"],
-                y=realtime_df["humidity"],
-                mode="lines+markers",
-                name="평균습도(%)",
-                yaxis="y2",
-            )
-        )
-
-        fig_temp_hum.update_layout(
-            title="평균기온·평균습도 변화",
-            height=420,
-            hovermode="x unified",
-            xaxis_title="날짜",
-            yaxis=dict(
-                title="기온(℃)",
-            ),
-            yaxis2=dict(
-                title="습도(%)",
-                overlaying="y",
-                side="right",
-                range=[0, 100],
-            ),
-            legend=dict(
-                orientation="h",
-            ),
-        )
-
-        st.plotly_chart(
-            fig_temp_hum,
-            use_container_width=True,
-        )
-
-    with chart_col2:
-        air_chart = (
+with left_chart:
+    if temp_cols:
+        temp_long = (
             realtime_df[
-                [
-                    "date",
-                    "pm10",
-                    "pm25",
-                ]
+                ["date"] + temp_cols
             ]
             .rename(
                 columns={
                     "date": "날짜",
-                    "pm10": "미세먼지 PM10",
-                    "pm25": "초미세먼지 PM2.5",
+                    "temp_avg": "평균기온",
+                    "temp_max": "최고기온",
+                    "temp_min": "최저기온",
                 }
             )
             .melt(
                 id_vars="날짜",
-                var_name="항목",
-                value_name="농도(㎍/㎥)",
+                var_name="기온 종류",
+                value_name="기온(℃)",
             )
         )
 
-        fig_air = px.line(
-            air_chart,
+        fig_temp = px.line(
+            temp_long,
             x="날짜",
-            y="농도(㎍/㎥)",
-            color="항목",
+            y="기온(℃)",
+            color="기온 종류",
             markers=True,
-            title="PM10·PM2.5 변화",
+            title="최근 40일 기온 변화",
         )
 
-        fig_air.update_layout(
+        fig_temp.update_layout(
             height=420,
-            hovermode="x unified",
+            legend_title_text="",
         )
 
         st.plotly_chart(
-            fig_air,
+            fig_temp,
             use_container_width=True,
         )
 
-    chart_col3, chart_col4 = st.columns(2)
 
-    with chart_col3:
+with right_chart:
+    if "humidity" in realtime_df.columns:
+        fig_humidity = px.line(
+            realtime_df,
+            x="date",
+            y="humidity",
+            markers=True,
+            title="최근 40일 평균습도 변화",
+            labels={
+                "date": "날짜",
+                "humidity": "평균습도(%)",
+            },
+        )
+
+        fig_humidity.add_hline(
+            y=60,
+            line_dash="dot",
+            annotation_text="RH 60%",
+        )
+
+        fig_humidity.add_hline(
+            y=75,
+            line_dash="dash",
+            annotation_text="RH 75%",
+        )
+
+        fig_humidity.add_hline(
+            y=95,
+            line_dash="dashdot",
+            annotation_text="RH 95%",
+        )
+
+        fig_humidity.update_layout(
+            height=420,
+            yaxis_range=[0, 100],
+        )
+
+        st.plotly_chart(
+            fig_humidity,
+            use_container_width=True,
+        )
+
+
+# ============================================================
+# 9. 강수·일교차
+# ============================================================
+
+st.markdown("---")
+st.subheader("🌧️ 강수 및 온도 변동")
+
+rain_col, range_col = st.columns(2)
+
+with rain_col:
+    if "rainfall" in realtime_df.columns:
+        fig_rain = px.bar(
+            realtime_df,
+            x="date",
+            y="rainfall",
+            title="일별 강수량",
+            labels={
+                "date": "날짜",
+                "rainfall": "강수량(mm)",
+            },
+        )
+
         if "rainfall_7d" in realtime_df.columns:
-            rain_chart = realtime_df[
-                [
-                    "date",
-                    "rainfall_7d",
-                ]
-            ].rename(
-                columns={
-                    "date": "날짜",
-                    "rainfall_7d": "최근 7일 누적강수량(mm)",
-                }
-            )
-
-            fig_rain = px.bar(
-                rain_chart,
-                x="날짜",
-                y="최근 7일 누적강수량(mm)",
-                title="최근 7일 누적 강수량",
+            fig_rain.add_trace(
+                go.Scatter(
+                    x=realtime_df["date"],
+                    y=realtime_df["rainfall_7d"],
+                    mode="lines+markers",
+                    name="7일 누적 강수량",
+                    yaxis="y2",
+                )
             )
 
             fig_rain.update_layout(
-                height=390,
-            )
-
-            st.plotly_chart(
-                fig_rain,
-                use_container_width=True,
-            )
-
-    with chart_col4:
-        humid_features = [
-            col
-            for col in [
-                "rh60_days_28",
-                "rh70_days_28",
-                "rh75_days_28",
-                "rh95_days_28",
-            ]
-            if col in realtime_df.columns
-        ]
-
-        if humid_features:
-            humid_legend_map = {
-                "rh60_days_28": "습도 60% 이상",
-                "rh70_days_28": "습도 70% 이상",
-                "rh75_days_28": "습도 75% 이상",
-                "rh95_days_28": "습도 95% 이상",
-            }
-
-            humid_long = (
-                realtime_df[
-                    ["date"] + humid_features
-                ]
-                .rename(
-                    columns={
-                        "date": "날짜",
-                        **humid_legend_map,
-                    }
-                )
-                .melt(
-                    id_vars="날짜",
-                    var_name="습도 조건",
-                    value_name="최근 28일 해당 일수",
+                yaxis2=dict(
+                    title="7일 누적 강수량(mm)",
+                    overlaying="y",
+                    side="right",
                 )
             )
 
-            fig_rh = px.line(
-                humid_long,
-                x="날짜",
-                y="최근 28일 해당 일수",
-                color="습도 조건",
-                markers=True,
-                title="최근 28일 습도 조건 누적일수",
-            )
+        fig_rain.update_layout(
+            height=420,
+        )
 
-            fig_rh.update_layout(
-                height=390,
-                yaxis_range=[0, 28],
-            )
+        st.plotly_chart(
+            fig_rain,
+            use_container_width=True,
+        )
 
-            st.plotly_chart(
-                fig_rh,
-                use_container_width=True,
-            )
 
-    # ========================================================
-    # 10-4. 최근 40일 기상·대기환경 데이터 표
-    # ========================================================
-
-    st.markdown("---")
-    st.subheader("📋 최근 40일 기상·대기환경 데이터")
-
-    basic_cols = [
-        "date",
-        "temp_avg",
-        "temp_max",
-        "temp_min",
-        "humidity",
-        "rainfall",
-        "wind_speed",
-        "sunshine_hours",
-        "ground_temp",
-        "pm10",
-        "pm25",
-        "o3",
-        "no2",
-        "co",
-        "so2",
-    ]
-
-    basic_cols = [
+with range_col:
+    available_range = [
         col
-        for col in basic_cols
+        for col in [
+            "temp_range",
+            "temp_change",
+            "humidity_change",
+            "humidity_std3",
+        ]
         if col in realtime_df.columns
     ]
 
-    basic_view = (
-        realtime_df[basic_cols]
-        .sort_values(
-            "date",
-            ascending=False,
+    if available_range:
+        range_legend = {
+            "temp_range": "일교차",
+            "temp_change": "기온 변화량",
+            "humidity_change": "습도 변화량",
+            "humidity_std3": "3일 습도 변동성",
+        }
+
+        range_long = (
+            realtime_df[
+                ["date"] + available_range
+            ]
+            .rename(
+                columns={
+                    "date": "날짜",
+                    **range_legend,
+                }
+            )
+            .melt(
+                id_vars="날짜",
+                var_name="변동 지표",
+                value_name="값",
+            )
         )
-        .copy()
-        .rename(
-            columns=COLUMN_KR
+
+        fig_range = px.line(
+            range_long,
+            x="날짜",
+            y="값",
+            color="변동 지표",
+            markers=True,
+            title="온도·습도 변동 파생변수",
         )
-    )
 
-    st.dataframe(
-        basic_view,
-        use_container_width=True,
-        height=520,
-        hide_index=True,
-    )
+        fig_range.update_layout(
+            height=420,
+            legend_title_text="",
+        )
 
-    # ========================================================
-    # 10-5. 최근 40일 예측용 파생변수 표
-    # ========================================================
+        st.plotly_chart(
+            fig_range,
+            use_container_width=True,
+        )
 
-    st.markdown("---")
-    st.subheader("🧮 최근 40일 예측용 파생변수")
 
-    derived_cols = [
-        "date",
-        "temp_range",
-        "temp_change",
-        "humidity_change",
-        "humidity_std3",
-        "rainfall_7d",
-        "rh60_days_28",
-        "rh75_days_28",
-        "rh95_days_28",
-        "rh75_consecutive_days",
-        "rh95_consecutive_days",
-        "wood_mold_days_28",
-        "rh70_days_28",
-        "rh70_consecutive_days",
-        "metal_so2_humidity",
-        "pm_total",
+# ============================================================
+# 10. 대기오염 추세
+# ============================================================
+
+st.markdown("---")
+st.subheader("🌫️ 대기오염 변화")
+
+air_left, air_right = st.columns(2)
+
+with air_left:
+    particle_cols = [
+        col
+        for col in [
+            "pm10",
+            "pm25",
+            "pm_total",
+        ]
+        if col in realtime_df.columns
+    ]
+
+    if particle_cols:
+        particle_legend = {
+            "pm10": "PM10",
+            "pm25": "PM2.5",
+            "pm_total": "PM10+PM2.5",
+        }
+
+        pm_long = (
+            realtime_df[
+                ["date"] + particle_cols
+            ]
+            .rename(
+                columns={
+                    "date": "날짜",
+                    **particle_legend,
+                }
+            )
+            .melt(
+                id_vars="날짜",
+                var_name="미세먼지 지표",
+                value_name="농도/부하",
+            )
+        )
+
+        fig_pm = px.line(
+            pm_long,
+            x="날짜",
+            y="농도/부하",
+            color="미세먼지 지표",
+            markers=True,
+            title="미세먼지 관련 지표",
+        )
+
+        fig_pm.update_layout(
+            height=420,
+            legend_title_text="",
+        )
+
+        st.plotly_chart(
+            fig_pm,
+            use_container_width=True,
+        )
+
+
+with air_right:
+    gas_cols = [
+        col
+        for col in [
+            "o3",
+            "no2",
+            "so2",
+        ]
+        if col in realtime_df.columns
+    ]
+
+    if gas_cols:
+        gas_legend = {
+            "o3": "O₃",
+            "no2": "NO₂",
+            "so2": "SO₂",
+        }
+
+        gas_long = (
+            realtime_df[
+                ["date"] + gas_cols
+            ]
+            .rename(
+                columns={
+                    "date": "날짜",
+                    **gas_legend,
+                }
+            )
+            .melt(
+                id_vars="날짜",
+                var_name="대기오염 물질",
+                value_name="농도(ppm)",
+            )
+        )
+
+        fig_gas = px.line(
+            gas_long,
+            x="날짜",
+            y="농도(ppm)",
+            color="대기오염 물질",
+            markers=True,
+            title="O₃ · NO₂ · SO₂ 변화",
+        )
+
+        fig_gas.update_layout(
+            height=420,
+            legend_title_text="",
+        )
+
+        st.plotly_chart(
+            fig_gas,
+            use_container_width=True,
+        )
+
+
+# ============================================================
+# 11. 누적 대기오염 파생변수
+# ============================================================
+
+derived_air_cols = [
+    col
+    for col in [
         "pm_load_3d",
         "pm_load_7d",
         "so2_ma7",
         "no2_ma7",
         "o3_ma7",
-        "season",
     ]
+    if col in realtime_df.columns
+]
 
-    derived_cols = [
+if derived_air_cols:
+    st.markdown("---")
+    st.subheader("🧪 누적·이동평균 대기오염 파생변수")
+
+    air_feature_legend = {
+        "pm_load_3d": "3일 미세먼지 부하",
+        "pm_load_7d": "7일 미세먼지 부하",
+        "so2_ma7": "SO₂ 7일 평균",
+        "no2_ma7": "NO₂ 7일 평균",
+        "o3_ma7": "O₃ 7일 평균",
+    }
+
+    selected_air_features = st.multiselect(
+        "표시할 대기오염 파생변수",
+        options=derived_air_cols,
+        default=derived_air_cols,
+        format_func=lambda x: air_feature_legend.get(
+            x,
+            x,
+        ),
+    )
+
+    if selected_air_features:
+        air_feature_long = (
+            realtime_df[
+                ["date"] + selected_air_features
+            ]
+            .rename(
+                columns={
+                    "date": "날짜",
+                    **air_feature_legend,
+                }
+            )
+            .melt(
+                id_vars="날짜",
+                var_name="파생변수",
+                value_name="값",
+            )
+        )
+
+        fig_air_feature = px.line(
+            air_feature_long,
+            x="날짜",
+            y="값",
+            color="파생변수",
+            markers=True,
+            title="대기오염 누적·이동평균 변화",
+        )
+
+        fig_air_feature.update_layout(
+            height=450,
+            legend_title_text="",
+        )
+
+        st.plotly_chart(
+            fig_air_feature,
+            use_container_width=True,
+        )
+
+
+# ============================================================
+# 12. 28일 습도 지속성
+# ============================================================
+
+st.markdown("---")
+st.subheader("💧 최근 28일 습도 조건 누적")
+
+humid_features = [
+    col
+    for col in [
+        "rh60_days_28",
+        "rh70_days_28",
+        "rh75_days_28",
+        "rh95_days_28",
+    ]
+    if col in realtime_df.columns
+]
+
+if humid_features:
+    humid_legend_map = {
+        "rh60_days_28": "RH>60%",
+        "rh70_days_28": "RH≥70%",
+        "rh75_days_28": "RH≥75%",
+        "rh95_days_28": "RH≥95%",
+    }
+
+    humid_long = (
+        realtime_df[
+            ["date"] + humid_features
+        ]
+        .rename(
+            columns={
+                "date": "날짜",
+                **humid_legend_map,
+            }
+        )
+        .melt(
+            id_vars="날짜",
+            var_name="습도 조건",
+            value_name="최근 28일 해당 일수",
+        )
+    )
+
+    fig_rh = px.line(
+        humid_long,
+        x="날짜",
+        y="최근 28일 해당 일수",
+        color="습도 조건",
+        markers=True,
+        title="최근 28일 고습 조건 누적일수",
+    )
+
+    fig_rh.update_layout(
+        height=450,
+        yaxis_range=[0, 28],
+        legend_title_text="",
+    )
+
+    st.plotly_chart(
+        fig_rh,
+        use_container_width=True,
+    )
+
+
+# ============================================================
+# 13. 재질 관련 환경지표
+# ============================================================
+
+st.markdown("---")
+st.subheader("🏛️ 재질 관련 환경 취약 파생변수")
+
+material_left, material_right = st.columns(2)
+
+with material_left:
+    wood_cols = [
         col
-        for col in derived_cols
+        for col in [
+            "wood_mold_days_7",
+            "wood_mold_days_28",
+            "rh75_consecutive_days",
+            "rh95_consecutive_days",
+        ]
         if col in realtime_df.columns
     ]
 
-    derived_view = (
-        realtime_df[derived_cols]
-        .sort_values(
-            "date",
-            ascending=False,
+    if wood_cols:
+        wood_legend = {
+            "wood_mold_days_7": "7일 목조 곰팡이 조건",
+            "wood_mold_days_28": "28일 목조 곰팡이 조건",
+            "rh75_consecutive_days": "RH≥75% 연속일수",
+            "rh95_consecutive_days": "RH≥95% 연속일수",
+        }
+
+        wood_long = (
+            realtime_df[
+                ["date"] + wood_cols
+            ]
+            .rename(
+                columns={
+                    "date": "날짜",
+                    **wood_legend,
+                }
+            )
+            .melt(
+                id_vars="날짜",
+                var_name="목조 관련 지표",
+                value_name="값",
+            )
         )
-        .copy()
-        .rename(
-            columns=COLUMN_KR
+
+        fig_wood = px.line(
+            wood_long,
+            x="날짜",
+            y="값",
+            color="목조 관련 지표",
+            markers=True,
+            title="목조 관련 습도·곰팡이 지표",
         )
-    )
 
-    st.dataframe(
-        derived_view,
-        use_container_width=True,
-        height=520,
-        hide_index=True,
-    )
+        fig_wood.update_layout(
+            height=420,
+            legend_title_text="",
+        )
 
-    # ========================================================
-    # 10-6. 데이터 품질
-    # ========================================================
+        st.plotly_chart(
+            fig_wood,
+            use_container_width=True,
+        )
 
-    st.markdown("---")
 
-    with st.expander(
-        "🔍 수집·전처리 품질 확인",
-        expanded=False,
+with material_right:
+    metal_cols = [
+        col
+        for col in [
+            "rh70_days_28",
+            "rh70_consecutive_days",
+            "metal_so2_humidity",
+        ]
+        if col in realtime_df.columns
+    ]
+
+    if metal_cols:
+        metal_legend = {
+            "rh70_days_28": "28일 RH≥70% 일수",
+            "rh70_consecutive_days": "RH≥70% 연속일수",
+            "metal_so2_humidity": "고습·SO₂ 복합지표",
+        }
+
+        metal_long = (
+            realtime_df[
+                ["date"] + metal_cols
+            ]
+            .rename(
+                columns={
+                    "date": "날짜",
+                    **metal_legend,
+                }
+            )
+            .melt(
+                id_vars="날짜",
+                var_name="금속 관련 지표",
+                value_name="값",
+            )
+        )
+
+        fig_metal = px.line(
+            metal_long,
+            x="날짜",
+            y="값",
+            color="금속 관련 지표",
+            markers=True,
+            title="금속 관련 고습·SO₂ 지표",
+        )
+
+        fig_metal.update_layout(
+            height=420,
+            legend_title_text="",
+        )
+
+        st.plotly_chart(
+            fig_metal,
+            use_container_width=True,
+        )
+
+
+# ============================================================
+# 14. 전체 파생변수 선택 시각화
+# ============================================================
+
+st.markdown("---")
+st.subheader("🧮 파생변수 직접 선택 비교")
+
+excluded_cols = {
+    "date",
+    "season",
+    "month",
+}
+
+candidate_numeric_features = []
+
+for col in realtime_df.columns:
+    if col in excluded_cols:
+        continue
+
+    if pd.api.types.is_numeric_dtype(
+        realtime_df[col]
     ):
-        q1, q2, q3, q4 = st.columns(4)
-
-        q1.metric(
-            "기상 API 일수",
-            f"{quality['weather_days']}일",
+        candidate_numeric_features.append(
+            col
         )
 
-        q2.metric(
-            "대기 API 일수",
-            f"{quality['air_days']}일",
-        )
+default_features = [
+    col
+    for col in [
+        "rainfall_7d",
+        "rh75_days_28",
+        "wood_mold_days_28",
+        "metal_so2_humidity",
+        "pm_load_7d",
+    ]
+    if col in candidate_numeric_features
+]
 
-        q3.metric(
-            "대기 결측 발생일",
-            f"{quality['air_missing_before_ffill']}일",
-        )
+selected_features = st.multiselect(
+    "비교할 Feature를 선택하세요",
+    options=candidate_numeric_features,
+    default=default_features,
+    format_func=lambda x: COLUMN_KR.get(
+        x,
+        x,
+    ),
+)
 
-        q4.metric(
-            "초기 결측 제거",
-            f"{quality['initial_rows_removed']}일",
-        )
-
-        st.info(
-            "결측값은 시간 순서를 유지하기 위해 ffill만 사용합니다. "
-            "미래 날짜의 값을 이전 날짜에 채우는 bfill은 사용하지 않습니다."
-        )
-
-    # ========================================================
-    # 10-7. CSV 다운로드
-    # ========================================================
-
-    st.markdown("---")
-
-    download_df = (
-        realtime_df
-        .copy()
+if selected_features:
+    selected_long = (
+        realtime_df[
+            ["date"] + selected_features
+        ]
         .rename(
-            columns=COLUMN_KR
+            columns={
+                "date": "날짜",
+                **{
+                    col: COLUMN_KR.get(
+                        col,
+                        col,
+                    )
+                    for col in selected_features
+                },
+            }
+        )
+        .melt(
+            id_vars="날짜",
+            var_name="Feature",
+            value_name="값",
         )
     )
 
-    csv_bytes = (
-        download_df
-        .to_csv(index=False)
-        .encode("utf-8-sig")
+    fig_selected = px.line(
+        selected_long,
+        x="날짜",
+        y="값",
+        color="Feature",
+        markers=True,
+        title="선택한 환경 Feature 변화",
     )
 
-    st.download_button(
-        "📥 최근 40일 예측용 데이터 CSV 다운로드",
-        data=csv_bytes,
-        file_name=(
-            f"영천_최근40일_예측용_환경데이터_"
-            f"{pd.Timestamp(loaded_target_date):%Y%m%d}.csv"
-        ),
-        mime="text/csv",
-        type="primary",
+    fig_selected.update_layout(
+        height=500,
+        legend_title_text="",
+    )
+
+    st.plotly_chart(
+        fig_selected,
         use_container_width=True,
     )
 
     st.caption(
-        "이 페이지에서 생성된 recent_40_weather / recent_40_air / "
-        "recent_40_environment 세션 데이터는 다음 '예측' 페이지에서 "
-        "동일 세션 안에서 재사용할 수 있습니다."
+        "※ 서로 단위와 값 범위가 다른 Feature를 한 그래프에 표시하므로 "
+        "절대 크기보다 시간에 따른 변화 방향을 비교하는 용도로 활용하세요."
     )
+
+
+# ============================================================
+# 15. 최근 40일 기본 환경 데이터 표
+# ============================================================
+
+st.markdown("---")
+st.subheader("📋 최근 40일 기상·대기환경 원자료")
+
+basic_cols = [
+    "date",
+    "temp_avg",
+    "temp_max",
+    "temp_min",
+    "humidity",
+    "rainfall",
+    "wind_speed",
+    "sunshine_hours",
+    "ground_temp",
+    "pm10",
+    "pm25",
+    "o3",
+    "no2",
+    "co",
+    "so2",
+]
+
+basic_cols = [
+    col
+    for col in basic_cols
+    if col in realtime_df.columns
+]
+
+basic_view = (
+    realtime_df[
+        basic_cols
+    ]
+    .sort_values(
+        "date",
+        ascending=False,
+    )
+    .copy()
+    .rename(
+        columns=COLUMN_KR
+    )
+)
+
+st.dataframe(
+    basic_view,
+    use_container_width=True,
+    height=520,
+    hide_index=True,
+)
+
+
+# ============================================================
+# 16. 최근 40일 파생변수 표
+# ============================================================
+
+st.markdown("---")
+st.subheader("🧪 최근 40일 예측용 파생변수")
+
+raw_cols = {
+    "date",
+    "temp_avg",
+    "temp_max",
+    "temp_min",
+    "humidity",
+    "rainfall",
+    "wind_speed",
+    "sunshine_hours",
+    "ground_temp",
+    "pm10",
+    "pm25",
+    "o3",
+    "no2",
+    "co",
+    "so2",
+}
+
+derived_cols = [
+    col
+    for col in realtime_df.columns
+    if col not in raw_cols
+]
+
+derived_view_cols = (
+    ["date"]
+    + derived_cols
+)
+
+derived_view = (
+    realtime_df[
+        derived_view_cols
+    ]
+    .sort_values(
+        "date",
+        ascending=False,
+    )
+    .copy()
+    .rename(
+        columns=COLUMN_KR
+    )
+)
+
+st.dataframe(
+    derived_view,
+    use_container_width=True,
+    height=600,
+    hide_index=True,
+)
+
+
+# ============================================================
+# 17. 데이터 품질
+# ============================================================
+
+st.markdown("---")
+
+with st.expander(
+    "🔍 수집·전처리 품질 확인",
+    expanded=False,
+):
+
+    if isinstance(
+        quality,
+        dict,
+    ):
+        q1, q2, q3, q4 = st.columns(
+            4
+        )
+
+        q1.metric(
+            "기상 API 일수",
+            f"{quality.get('weather_days', '-')}일",
+        )
+
+        q2.metric(
+            "대기 API 일수",
+            f"{quality.get('air_days', '-')}일",
+        )
+
+        q3.metric(
+            "대기 결측 발생일",
+            f"{quality.get('air_missing_before_ffill', '-')}일",
+        )
+
+        q4.metric(
+            "사용 가능 일수",
+            f"{quality.get('usable_days', len(realtime_df))}일",
+        )
+
+        st.json(
+            quality
+        )
+
+    else:
+        st.info(
+            "현재 세션에는 별도의 데이터 품질 요약 정보가 없습니다."
+        )
+
+
+# ============================================================
+# 18. CSV 다운로드
+# ============================================================
+
+st.markdown("---")
+
+csv_bytes = (
+    realtime_df
+    .to_csv(
+        index=False
+    )
+    .encode(
+        "utf-8-sig"
+    )
+)
+
+st.download_button(
+    "📥 최근 40일 환경·파생변수 전체 CSV 다운로드",
+    data=csv_bytes,
+    file_name=(
+        "영천_최근40일_환경데이터_파생변수_"
+        f"{loaded_target_date:%Y%m%d}.csv"
+    ),
+    mime="text/csv",
+    use_container_width=True,
+)
+
+st.caption(
+    "※ 이 페이지의 파생변수는 문화유산 취약도 예측 모델 입력에 사용된 "
+    "환경 Feature를 시각화한 것입니다."
+)
+
+st.caption(
+    "선화여고 · 영천 헤리티지 AI 탐구단"
+)
