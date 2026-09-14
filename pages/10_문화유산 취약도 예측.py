@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from datetime import date, timedelta
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import json
 import time
 import urllib.parse
@@ -106,10 +107,13 @@ DATA_DIR = Path("data/processed")
 
 MODEL_PATH = MODEL_DIR / "best_model.pkl"
 FEATURE_COLS_PATH = MODEL_DIR / "feature_cols.pkl"
+TRAIN_MEDIANS_PATH = MODEL_DIR / "train_medians.pkl"
+BUNDLE_PATH = MODEL_DIR / "heritage_risk_bundle.pkl"
 MODEL_META_PATH = MODEL_DIR / "model_metadata.json"
 
 # 실시간 대시보드가 항상 읽는 마지막 예측 결과 파일
 LATEST_PREDICTION_PATH = DATA_DIR / "latest_prediction.csv"
+LATEST_ENVIRONMENT_PATH = DATA_DIR / "latest_40_environment.csv"
 
 HERITAGE_CANDIDATES = [
     DATA_DIR / "yc_heritage_feature.csv",
@@ -205,15 +209,103 @@ def find_heritage_path() -> Path:
 
 @st.cache_resource(show_spinner=False)
 def load_model_assets():
+    """
+    최신 학습 결과 Bundle을 우선 사용한다.
+
+    Bundle 구성:
+    - model
+    - features
+    - train_medians
+    - metadata
+
+    이전 버전과의 호환을 위해 Bundle이 없으면
+    best_model.pkl / feature_cols.pkl / train_medians.pkl /
+    model_metadata.json을 각각 읽는다.
+    """
+
+    # --------------------------------------------------------
+    # 1순위: 통합 Bundle
+    # --------------------------------------------------------
+    if BUNDLE_PATH.exists():
+        try:
+            bundle = joblib.load(
+                BUNDLE_PATH
+            )
+
+            if not isinstance(
+                bundle,
+                dict,
+            ):
+                raise ValueError(
+                    "모델 Bundle 형식이 올바르지 않습니다."
+                )
+
+            model = bundle.get(
+                "model"
+            )
+
+            feature_cols = bundle.get(
+                "features"
+            )
+
+            train_medians = bundle.get(
+                "train_medians",
+                {},
+            )
+
+            metadata = bundle.get(
+                "metadata",
+                {},
+            )
+
+            if model is None:
+                raise ValueError(
+                    "Bundle에 model이 없습니다."
+                )
+
+            if not feature_cols:
+                raise ValueError(
+                    "Bundle에 features가 없습니다."
+                )
+
+            if not isinstance(
+                train_medians,
+                dict,
+            ):
+                train_medians = {}
+
+            if not isinstance(
+                metadata,
+                dict,
+            ):
+                metadata = {}
+
+            return (
+                model,
+                list(feature_cols),
+                train_medians,
+                metadata,
+            )
+
+        except Exception as e:
+            raise RuntimeError(
+                f"통합 모델 Bundle 로드 실패: {e}"
+            ) from e
+
+    # --------------------------------------------------------
+    # 2순위: 이전 버전 개별 파일
+    # --------------------------------------------------------
     if not MODEL_PATH.exists():
         raise FileNotFoundError(
             f"최종 모델 파일이 없습니다: {MODEL_PATH}\n"
-            "'위험 예측 분류 모델 학습' 페이지에서 먼저 모델을 학습하세요."
+            "'환경 취약도 분류 모델 학습' 페이지에서 "
+            "먼저 모델을 학습하세요."
         )
 
     if not FEATURE_COLS_PATH.exists():
         raise FileNotFoundError(
-            f"Feature 목록 파일이 없습니다: {FEATURE_COLS_PATH}"
+            f"Feature 목록 파일이 없습니다: "
+            f"{FEATURE_COLS_PATH}"
         )
 
     model = joblib.load(
@@ -223,6 +315,23 @@ def load_model_assets():
     feature_cols = joblib.load(
         FEATURE_COLS_PATH
     )
+
+    train_medians = {}
+
+    if TRAIN_MEDIANS_PATH.exists():
+        try:
+            loaded_medians = joblib.load(
+                TRAIN_MEDIANS_PATH
+            )
+
+            if isinstance(
+                loaded_medians,
+                dict,
+            ):
+                train_medians = loaded_medians
+
+        except Exception:
+            train_medians = {}
 
     metadata = {}
 
@@ -236,7 +345,12 @@ def load_model_assets():
         except Exception:
             metadata = {}
 
-    return model, feature_cols, metadata
+    return (
+        model,
+        feature_cols,
+        train_medians,
+        metadata,
+    )
 
 
 @st.cache_data(show_spinner=False)
@@ -489,6 +603,7 @@ def combine_environment_and_heritage(
 def build_inference_features(
     prediction_df: pd.DataFrame,
     feature_cols: list[str],
+    train_medians: dict,
 ) -> pd.DataFrame:
     """
     학습 시 저장한 feature_cols와 완전히 동일한 열 순서로 변환.
@@ -534,10 +649,41 @@ def build_inference_features(
     )
 
     if missing_cols:
-        raise ValueError(
-            "예측 Feature에 결측값이 남아 있습니다: "
-            f"{missing_cols}"
+        # ----------------------------------------------------
+        # 학습 시 2019~2024 최종 학습 구간에서 계산한
+        # Feature 중앙값으로 실시간 API 결측값 보정
+        # ----------------------------------------------------
+        for col in missing_cols:
+            median_value = (
+                train_medians.get(col)
+                if isinstance(
+                    train_medians,
+                    dict,
+                )
+                else None
+            )
+
+            if pd.notna(
+                median_value
+            ):
+                X[col] = X[col].fillna(
+                    median_value
+                )
+
+        remaining_missing = (
+            X.columns[
+                X.isna().any()
+            ]
+            .tolist()
         )
+
+        if remaining_missing:
+            raise ValueError(
+                "예측 Feature에 결측값이 남아 있습니다: "
+                f"{remaining_missing}. "
+                "모델 학습 페이지에서 다시 학습하여 "
+                "heritage_risk_bundle.pkl을 생성해주세요."
+            )
 
     return X
 
@@ -574,12 +720,14 @@ def get_class_probability(
 def run_prediction(
     model,
     feature_cols: list[str],
+    train_medians: dict,
     prediction_df: pd.DataFrame,
 ) -> pd.DataFrame:
 
     X = build_inference_features(
         prediction_df,
         feature_cols,
+        train_medians,
     )
 
     predicted = model.predict(
@@ -1505,9 +1653,12 @@ def save_latest_prediction(
 # ============================================================
 
 try:
-    model, feature_cols, metadata = (
-        load_model_assets()
-    )
+    (
+        model,
+        feature_cols,
+        train_medians,
+        metadata,
+    ) = load_model_assets()
 except Exception as e:
     st.error(
         f"❌ 모델 로드 실패: {e}"
@@ -1616,6 +1767,11 @@ top4.metric(
 )
 
 st.caption(
+    f"결측 보정용 학습 중앙값: {len(train_medians):,}개 Feature · "
+    "2019~2024 최종 학습 구간 기준"
+)
+
+st.caption(
     "※ 별도의 '최근 40일 환경 데이터' 페이지를 먼저 실행할 필요가 없습니다. "
     "아래 버튼 한 번으로 전일 기준 최근 40일 데이터 수집부터 예측까지 처리합니다."
 )
@@ -1691,6 +1847,19 @@ if run_clicked:
         st.session_state.recent_40_target_date = target_date
         st.session_state.recent_40_air_station = used_station
 
+        # 최근 40일 환경·파생변수를 파일로도 저장하여
+        # 페이지 이동/재배포 이후 시각화 페이지에서 fallback으로 사용
+        DATA_DIR.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        realtime_df.to_csv(
+            LATEST_ENVIRONMENT_PATH,
+            index=False,
+            encoding="utf-8-sig",
+        )
+
         # 4. exact target feature
         status.update(
             label="📌 전일 기준 환경 Feature 선택 중...",
@@ -1726,6 +1895,7 @@ if run_clicked:
         result_df = run_prediction(
             model,
             feature_cols,
+            train_medians,
             prediction_input,
         )
 
@@ -1774,6 +1944,19 @@ if run_clicked:
         ] = None
 
         try:
+            # 최근 40일 환경·파생변수도 GitHub에 저장하여
+            # Streamlit 재배포 후에도 09 페이지가 읽을 수 있게 한다.
+            upload_local_file_to_github(
+                local_path=LATEST_ENVIRONMENT_PATH,
+                git_file_path=(
+                    "data/processed/latest_40_environment.csv"
+                ),
+                commit_message=(
+                    "chore: latest 40-day environment "
+                    f"{pd.Timestamp(target_date):%Y-%m-%d}"
+                ),
+            )
+
             (
                 latest_saved_df,
                 github_result,
