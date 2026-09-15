@@ -89,7 +89,9 @@ AIR_STATION_NAME = st.secrets.get("AIR_STATION_NAME", "영천")
 DISPLAY_START_DATE = date(2026, 1, 1)
 # 28일 rolling 파생변수를 1월 1일부터 계산하려면 이전 데이터가 필요함.
 COLLECT_START_DATE = DISPLAY_START_DATE - timedelta(days=35)
-REQUEST_END_DATE = datetime.now(KST).date()
+TODAY = datetime.now(KST).date()
+REQUEST_END_DATE = TODAY - timedelta(days=1)
+
 
 
 def find_heritage_path() -> Path:
