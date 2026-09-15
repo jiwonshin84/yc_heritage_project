@@ -899,8 +899,20 @@ def fetch_weather_range(
 # 4. 기간형 AirKorea 수집
 # ============================================================
 
-def _request_air_chunk(start_date: date, end_date: date, station_name: str):
-    safe_key = urllib.parse.unquote(AIR_SERVICE_KEY)
+# ============================================================
+# AirKorea 안정형 수집
+# 7일 → 실패 시 3일 → 실패 시 1일 단위로 자동 분할
+# 특정 날짜 실패 때문에 전체 수집을 중단하지 않음
+# ============================================================
+
+def _request_air_once(
+    start_date: date,
+    end_date: date,
+    station_name: str,
+):
+    safe_key = urllib.parse.unquote(
+        AIR_SERVICE_KEY
+    )
 
     params = {
         "serviceKey": safe_key,
@@ -913,92 +925,341 @@ def _request_air_chunk(start_date: date, end_date: date, station_name: str):
     }
 
     last_error = None
-    for wait_seconds in [0, 2, 4, 7]:
+
+    # 재시도
+    for attempt, wait_seconds in enumerate(
+        [0, 2, 5],
+        start=1,
+    ):
+
         if wait_seconds:
             time.sleep(wait_seconds)
+
         try:
-            response = requests.get(AIR_URL, params=params, timeout=60)
+
+            response = requests.get(
+                AIR_URL,
+                params=params,
+                timeout=40,
+            )
+
             response.raise_for_status()
+
+            # JSON 응답 확인
             if not response.text.strip().startswith("{"):
-                raise RuntimeError("AirKorea API가 JSON이 아닌 응답을 반환했습니다.")
+                raise RuntimeError(
+                    "AirKorea API가 JSON이 아닌 "
+                    "응답을 반환했습니다."
+                )
+
             data = response.json()
-            return (
-                data.get("response", {})
+
+            header = (
+                data
+                .get("response", {})
+                .get("header", {})
+            )
+
+            result_code = str(
+                header.get(
+                    "resultCode",
+                    "",
+                )
+            )
+
+            result_msg = header.get(
+                "resultMsg",
+                "",
+            )
+
+            if result_code not in [
+                "00",
+                "0",
+                "",
+            ]:
+                raise RuntimeError(
+                    f"AirKorea API 오류: "
+                    f"{result_code} / {result_msg}"
+                )
+
+            items = (
+                data
+                .get("response", {})
                 .get("body", {})
                 .get("items", [])
-            ) or []
+            )
+
+            if isinstance(items, dict):
+                items = [items]
+
+            return items or []
+
         except Exception as e:
+
             last_error = e
 
-    raise RuntimeError(
-        f"AirKorea 수집 실패 {start_date}~{end_date}: {last_error}"
+    # 여기서는 전체 프로그램을 중단하지 않음
+    return None
+
+
+def _collect_air_period(
+    start_date: date,
+    end_date: date,
+    station_name: str,
+):
+    """
+    먼저 전체 기간을 요청하고 실패하면
+    기간을 자동으로 더 작게 분할합니다.
+    """
+
+    items = _request_air_once(
+        start_date,
+        end_date,
+        station_name,
+    )
+
+    # 정상 응답
+    if items is not None:
+        return items, []
+
+    days = (
+        end_date - start_date
+    ).days + 1
+
+    # ========================================================
+    # 1일 요청도 실패
+    # → 이 날짜만 건너뜀
+    # ========================================================
+
+    if days <= 1:
+
+        return [], [start_date]
+
+    # ========================================================
+    # 실패한 구간을 절반으로 나누어 다시 시도
+    # ========================================================
+
+    midpoint = (
+        start_date
+        + timedelta(
+            days=(days // 2) - 1
+        )
+    )
+
+    second_start = (
+        midpoint
+        + timedelta(days=1)
+    )
+
+    left_items, left_failed = (
+        _collect_air_period(
+            start_date,
+            midpoint,
+            station_name,
+        )
+    )
+
+    right_items, right_failed = (
+        _collect_air_period(
+            second_start,
+            end_date,
+            station_name,
+        )
+    )
+
+    return (
+        left_items + right_items,
+        left_failed + right_failed,
     )
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def fetch_air_range(start_date: date, end_date: date):
+@st.cache_data(
+    ttl=3600,
+    show_spinner=False,
+)
+def fetch_air_range(
+    start_date: date,
+    end_date: date,
+):
+
     if not AIR_SERVICE_KEY:
+
         raise ValueError(
-            "Streamlit Secrets에 AIR_SERVICE_KEY 또는 SERVICE_KEY가 없습니다."
+            "Streamlit Secrets에 "
+            "AIR_SERVICE_KEY 또는 "
+            "SERVICE_KEY가 없습니다."
         )
 
+    # 측정소 후보
     candidates = []
-    for name in [AIR_STATION_NAME, "영천시", "영천"]:
-        if name and name not in candidates:
+
+    for name in [
+        AIR_STATION_NAME,
+        "영천시",
+        "영천",
+    ]:
+
+        if (
+            name
+            and name not in candidates
+        ):
             candidates.append(name)
 
+    # ========================================================
+    # 측정소별 시도
+    # ========================================================
+
     for station_name in candidates:
+
         all_items = []
+        failed_dates = []
+
         chunk_start = start_date
 
-        # API 안정성을 위해 7일씩 나누어 호출
+        # ----------------------------------------------------
+        # 우선 7일 단위
+        # ----------------------------------------------------
+
         while chunk_start <= end_date:
-            chunk_end = min(chunk_start + timedelta(days=6), end_date)
-            all_items.extend(
-                _request_air_chunk(chunk_start, chunk_end, station_name)
+
+            chunk_end = min(
+                chunk_start
+                + timedelta(days=6),
+                end_date,
             )
-            chunk_start = chunk_end + timedelta(days=1)
+
+            items, failed = (
+                _collect_air_period(
+                    chunk_start,
+                    chunk_end,
+                    station_name,
+                )
+            )
+
+            all_items.extend(items)
+            failed_dates.extend(failed)
+
+            chunk_start = (
+                chunk_end
+                + timedelta(days=1)
+            )
+
+            # API 부하 방지
+            time.sleep(0.2)
+
+        # ====================================================
+        # 하나도 수집하지 못한 측정소
+        # → 다음 측정소 시도
+        # ====================================================
 
         if not all_items:
             continue
 
-        air = pd.DataFrame(all_items).rename(columns={
-            "msurDt": "date",
-            "pm10Value": "pm10",
-            "pm25Value": "pm25",
-            "o3Value": "o3",
-            "no2Value": "no2",
-            "coValue": "co",
-            "so2Value": "so2",
-        })
+        # ====================================================
+        # DataFrame 변환
+        # ====================================================
 
-        cols = ["date", "pm10", "pm25", "o3", "no2", "co", "so2"]
+        air = pd.DataFrame(
+            all_items
+        ).rename(
+            columns={
+                "msurDt": "date",
+                "pm10Value": "pm10",
+                "pm25Value": "pm25",
+                "o3Value": "o3",
+                "no2Value": "no2",
+                "coValue": "co",
+                "so2Value": "so2",
+            }
+        )
+
+        cols = [
+            "date",
+            "pm10",
+            "pm25",
+            "o3",
+            "no2",
+            "co",
+            "so2",
+        ]
+
         for col in cols:
+
             if col not in air.columns:
                 air[col] = np.nan
 
-        air = air[cols].copy()
-        air["date"] = pd.to_datetime(air["date"], errors="coerce").dt.floor("D")
+        air = air[
+            cols
+        ].copy()
+
+        air["date"] = pd.to_datetime(
+            air["date"],
+            errors="coerce",
+        ).dt.floor("D")
+
+        # ----------------------------------------------------
+        # 숫자형 변환
+        # ----------------------------------------------------
 
         for col in cols[1:]:
+
             air[col] = pd.to_numeric(
-                air[col].replace(["-", "", "null", "None"], np.nan),
+                air[col].replace(
+                    [
+                        "-",
+                        "",
+                        "null",
+                        "None",
+                    ],
+                    np.nan,
+                ),
                 errors="coerce",
             )
 
+        # 같은 날짜 자료 평균
         air = (
-            air.dropna(subset=["date"])
-            .groupby("date", as_index=False)
-            .mean(numeric_only=True)
+            air
+            .dropna(
+                subset=["date"]
+            )
+            .groupby(
+                "date",
+                as_index=False,
+            )
+            .mean(
+                numeric_only=True
+            )
             .sort_values("date")
             .reset_index(drop=True)
         )
 
-        if not air.empty:
-            return air, station_name
+        # ====================================================
+        # 실패 날짜 기록
+        # ====================================================
+
+        air.attrs[
+            "failed_dates"
+        ] = failed_dates
+
+        air.attrs[
+            "station_name"
+        ] = station_name
+
+        return (
+            air,
+            station_name,
+            failed_dates,
+        )
+
+    # ========================================================
+    # 모든 측정소 실패
+    # ========================================================
 
     raise RuntimeError(
-        "영천 대기환경 자료를 찾지 못했습니다. AIR_STATION_NAME 설정을 확인하세요."
+        "영천 대기환경 자료를 "
+        "한 건도 수집하지 못했습니다. "
+        "AirKorea API 상태와 "
+        "AIR_STATION_NAME 설정을 확인하세요."
     )
 
 
