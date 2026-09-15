@@ -629,69 +629,270 @@ def run_prediction(
 
 # ============================================================
 # 3. 기간형 ASOS 수집
+#    - 장기간을 한 번에 요청하지 않고 30일 단위로 분할 수집
 # ============================================================
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def fetch_weather_range(start_date: date, end_date: date) -> pd.DataFrame:
+def fetch_weather_range(
+    start_date: date,
+    end_date: date,
+) -> pd.DataFrame:
+
     if not ASOS_SERVICE_KEY:
         raise ValueError(
-            "Streamlit Secrets에 ASOS_SERVICE_KEY 또는 SERVICE_KEY가 없습니다."
+            "Streamlit Secrets에 "
+            "ASOS_SERVICE_KEY 또는 SERVICE_KEY가 없습니다."
         )
 
-    params = {
-        "serviceKey": ASOS_SERVICE_KEY,
-        "numOfRows": "1000",
-        "pageNo": "1",
-        "dataType": "JSON",
-        "dataCd": "ASOS",
-        "dateCd": "DAY",
-        "startDt": start_date.strftime("%Y%m%d"),
-        "endDt": end_date.strftime("%Y%m%d"),
-        "stnIds": STN_ID,
-    }
+    all_items = []
 
-    response = requests.get(ASOS_URL, params=params, timeout=60)
-    response.raise_for_status()
-    result = response.json()
+    # --------------------------------------------------------
+    # 30일 단위로 나누어 수집
+    # --------------------------------------------------------
+    chunk_start = start_date
 
-    items = (
-        result.get("response", {})
-        .get("body", {})
-        .get("items", {})
-        .get("item", [])
-    )
-    if not items:
-        raise RuntimeError(f"ASOS 데이터가 없습니다: {start_date} ~ {end_date}")
+    while chunk_start <= end_date:
 
-    weather = pd.DataFrame(items)
+        chunk_end = min(
+            chunk_start + timedelta(days=29),
+            end_date,
+        )
+
+        params = {
+            "serviceKey": ASOS_SERVICE_KEY,
+            "numOfRows": "999",
+            "pageNo": "1",
+            "dataType": "JSON",
+            "dataCd": "ASOS",
+            "dateCd": "DAY",
+            "startDt": chunk_start.strftime("%Y%m%d"),
+            "endDt": chunk_end.strftime("%Y%m%d"),
+            "stnIds": STN_ID,
+        }
+
+        try:
+
+            response = requests.get(
+                ASOS_URL,
+                params=params,
+                timeout=60,
+            )
+
+            response.raise_for_status()
+
+            # ----------------------------------------------
+            # JSON 응답 확인
+            # ----------------------------------------------
+            try:
+                result = response.json()
+
+            except Exception:
+
+                st.warning(
+                    f"⚠️ ASOS 응답 JSON 변환 실패: "
+                    f"{chunk_start} ~ {chunk_end}"
+                )
+
+                chunk_start = chunk_end + timedelta(days=1)
+
+                continue
+
+            # ----------------------------------------------
+            # API 오류 메시지 확인
+            # ----------------------------------------------
+            header = (
+                result
+                .get("response", {})
+                .get("header", {})
+            )
+
+            result_code = str(
+                header.get("resultCode", "")
+            )
+
+            result_msg = header.get(
+                "resultMsg",
+                "",
+            )
+
+            if result_code not in [
+                "00",
+                "0",
+                "",
+            ]:
+
+                st.warning(
+                    f"⚠️ ASOS API 오류 "
+                    f"{chunk_start} ~ {chunk_end}\n\n"
+                    f"{result_code} / {result_msg}"
+                )
+
+                chunk_start = chunk_end + timedelta(days=1)
+
+                continue
+
+            # ----------------------------------------------
+            # 데이터 추출
+            # ----------------------------------------------
+            items = (
+                result
+                .get("response", {})
+                .get("body", {})
+                .get("items", {})
+                .get("item", [])
+            )
+
+            if items:
+
+                if isinstance(items, dict):
+                    items = [items]
+
+                all_items.extend(items)
+
+            else:
+
+                st.warning(
+                    f"⚠️ ASOS 자료 없음: "
+                    f"{chunk_start} ~ {chunk_end}"
+                )
+
+        except Exception as e:
+
+            st.warning(
+                f"⚠️ ASOS 수집 실패: "
+                f"{chunk_start} ~ {chunk_end}\n\n"
+                f"{e}"
+            )
+
+        # 다음 기간
+        chunk_start = (
+            chunk_end
+            + timedelta(days=1)
+        )
+
+        # API 과도 호출 방지
+        time.sleep(0.15)
+
+    # ========================================================
+    # 전체 기간을 수집했는데 하나도 없는 경우
+    # ========================================================
+
+    if not all_items:
+
+        raise RuntimeError(
+            f"ASOS 데이터를 전혀 수집하지 못했습니다: "
+            f"{start_date} ~ {end_date}\n\n"
+            "API 인증키와 응답 메시지를 확인하세요."
+        )
+
+    # ========================================================
+    # DataFrame 변환
+    # ========================================================
+
+    weather = pd.DataFrame(all_items)
 
     required = [
-        "tm", "avgTa", "maxTa", "minTa", "avgRhm",
-        "sumRn", "avgWs", "sumSsHr", "avgTs",
+        "tm",
+        "avgTa",
+        "maxTa",
+        "minTa",
+        "avgRhm",
+        "sumRn",
+        "avgWs",
+        "sumSsHr",
+        "avgTs",
     ]
-    missing = [c for c in required if c not in weather.columns]
+
+    missing = [
+        col
+        for col in required
+        if col not in weather.columns
+    ]
+
     if missing:
-        raise ValueError(f"ASOS 응답에 필요한 컬럼이 없습니다: {missing}")
 
-    weather = weather[required].copy()
+        raise ValueError(
+            f"ASOS 응답에 필요한 컬럼이 없습니다: "
+            f"{missing}"
+        )
+
+    weather = weather[
+        required
+    ].copy()
+
     weather.columns = [
-        "date", "temp_avg", "temp_max", "temp_min", "humidity",
-        "rainfall", "wind_speed", "sunshine_hours", "ground_temp",
+        "date",
+        "temp_avg",
+        "temp_max",
+        "temp_min",
+        "humidity",
+        "rainfall",
+        "wind_speed",
+        "sunshine_hours",
+        "ground_temp",
     ]
-    weather["date"] = pd.to_datetime(weather["date"], errors="coerce").dt.floor("D")
 
-    numeric_cols = [c for c in weather.columns if c != "date"]
+    # ========================================================
+    # 날짜 변환
+    # ========================================================
+
+    weather["date"] = pd.to_datetime(
+        weather["date"],
+        errors="coerce",
+    ).dt.floor("D")
+
+    # ========================================================
+    # 숫자 변환
+    # ========================================================
+
+    numeric_cols = [
+        col
+        for col in weather.columns
+        if col != "date"
+    ]
+
     for col in numeric_cols:
-        weather[col] = pd.to_numeric(weather[col], errors="coerce")
 
-    weather["rainfall"] = weather["rainfall"].fillna(0)
+        weather[col] = pd.to_numeric(
+            weather[col],
+            errors="coerce",
+        )
 
-    return (
-        weather.dropna(subset=["date"])
+    # 강수량 NaN = 무강수
+    weather["rainfall"] = (
+        weather["rainfall"]
+        .fillna(0)
+    )
+
+    # ========================================================
+    # 정렬 / 중복 제거
+    # ========================================================
+
+    weather = (
+        weather
+        .dropna(
+            subset=["date"]
+        )
         .sort_values("date")
-        .drop_duplicates("date", keep="last")
+        .drop_duplicates(
+            "date",
+            keep="last",
+        )
         .reset_index(drop=True)
     )
+
+    # ========================================================
+    # 수집 결과 확인
+    # ========================================================
+
+    if weather.empty:
+
+        raise RuntimeError(
+            "ASOS 데이터를 DataFrame으로 변환한 후 "
+            "사용 가능한 자료가 없습니다."
+        )
+
+    return weather
 
 
 # ============================================================
