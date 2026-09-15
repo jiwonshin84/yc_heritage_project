@@ -1679,10 +1679,26 @@ except Exception as e:
 
 
 # ============================================================
-# 9. 전일~40일 자동 수집 + 바로 취약도 예측
+# 9. 선택 기준일~40일 자동 수집 + 바로 취약도 예측
 # ============================================================
 
-target_date = DEFAULT_TARGET_DATE
+# 사용자가 예측 기준일을 직접 선택할 수 있습니다.
+# 기본값은 기존과 동일하게 전일이며, 미래 날짜는 선택할 수 없습니다.
+st.markdown("### 📅 예측 기준일 선택")
+
+target_date = st.date_input(
+    "환경 데이터 수집 및 예측 기준일",
+    value=DEFAULT_TARGET_DATE,
+    max_value=DEFAULT_TARGET_DATE,
+    format="YYYY-MM-DD",
+    help=(
+        "선택한 날짜를 포함하여 이전 39일, 총 40일의 기상·대기환경 자료를 "
+        "수집한 뒤 해당 날짜의 환경 취약도를 예측합니다. "
+        "선택한 날짜의 일자료가 아직 API에 없으면 확보 가능한 최신 Feature 날짜를 사용합니다."
+    ),
+    key="prediction_target_date_picker",
+)
+
 target_ts = pd.Timestamp(
     target_date
 )
@@ -1729,7 +1745,7 @@ realtime_df = st.session_state.get(
 st.markdown(
     f"""
     <div class="prediction-hero">
-        <h3>🤖 전일 기준 자동 수집·예측</h3>
+        <h3>🤖 선택 날짜 기준 자동 수집·예측</h3>
         <p>
             <b>{start_target_date:%Y-%m-%d}</b> ~
             <b>{target_ts:%Y-%m-%d}</b> 최근 40일 환경자료를 자동 수집하고,
@@ -1773,17 +1789,17 @@ st.caption(
 
 st.caption(
     "※ 별도의 '최근 40일 환경 데이터' 페이지를 먼저 실행할 필요가 없습니다. "
-    "아래 버튼 한 번으로 전일 기준 최근 40일 데이터 수집부터 예측까지 처리합니다."
+    "선택한 기준일을 포함한 최근 40일 데이터 수집부터 예측까지 아래 버튼 한 번으로 처리합니다."
 )
 
 st.caption(
-    "※ 전일 일자료가 아직 공공데이터 API에 제공되지 않은 경우에는 "
+    "※ 선택한 기준일의 일자료가 아직 공공데이터 API에 제공되지 않은 경우에는 "
     "최종 파생변수가 생성된 가장 최근 날짜를 자동으로 예측 기준일로 사용합니다."
 )
 
 
 run_clicked = st.button(
-    "🚀 전일~40일 자동 수집 후 문화유산 환경 취약도 예측",
+    "🚀 선택일 기준 최근 40일 수집 후 문화유산 환경 취약도 예측",
     type="primary",
     use_container_width=True,
 )
