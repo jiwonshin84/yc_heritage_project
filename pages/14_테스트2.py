@@ -1271,7 +1271,7 @@ try:
                     "risk_index": "위험지수",
                     "safe_probability": "안전확률(%)",
                     "caution_probability": "주의확률(%)",
-                    "danger_probability": "위험확률(%)",
+                    "danger_probability": "위험확률(%)", 
                 }),
                 use_container_width=True,
                 hide_index=True,
