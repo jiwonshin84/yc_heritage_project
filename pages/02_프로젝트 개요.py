@@ -13,81 +13,6 @@ st.set_page_config(
 
 
 # ==========================================================
-# 카드 스타일
-# - 환경 취약도 분석 주요 변수
-# - 활용 기술
-# 위 두 영역의 카드 높이를 동일하게 맞추기 위해 사용
-# ==========================================================
-
-st.markdown(
-    """
-    <style>
-    .equal-card {
-        min-height: 255px;
-        height: 255px;
-        padding: 20px 22px;
-        border-radius: 10px;
-        box-sizing: border-box;
-        margin-bottom: 10px;
-    }
-
-    .equal-card h3 {
-        margin-top: 0;
-        margin-bottom: 16px;
-        font-size: 1.15rem;
-    }
-
-    .equal-card ul {
-        margin-top: 0;
-        margin-bottom: 0;
-        padding-left: 22px;
-    }
-
-    .equal-card li {
-        margin-bottom: 6px;
-    }
-
-    /* 환경 취약도 주요 변수 카드 */
-    .variable-card {
-        background-color: rgba(28, 131, 225, 0.10);
-        border: 1px solid rgba(28, 131, 225, 0.20);
-    }
-
-    /* 활용 기술 카드 색상 */
-    .tech-blue {
-        background-color: rgba(28, 131, 225, 0.10);
-        border: 1px solid rgba(28, 131, 225, 0.20);
-    }
-
-    .tech-green {
-        background-color: rgba(33, 195, 84, 0.10);
-        border: 1px solid rgba(33, 195, 84, 0.20);
-    }
-
-    .tech-yellow {
-        background-color: rgba(255, 193, 7, 0.12);
-        border: 1px solid rgba(255, 193, 7, 0.25);
-    }
-
-    .tech-red {
-        background-color: rgba(255, 75, 75, 0.10);
-        border: 1px solid rgba(255, 75, 75, 0.20);
-    }
-
-    /* 작은 화면에서는 높이 자동 조정 */
-    @media (max-width: 900px) {
-        .equal-card {
-            height: auto;
-            min-height: 230px;
-        }
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# ==========================================================
 # 페이지 제목
 # ==========================================================
 
@@ -302,67 +227,51 @@ st.subheader("🌡️ 환경 취약도 분석 주요 변수")
 v1, v2, v3, v4 = st.columns(4)
 
 with v1:
-    st.markdown(
+    st.info(
         """
-        <div class="equal-card variable-card">
-            <h3>🌡 기온</h3>
-            <ul>
-                <li>평균 기온</li>
-                <li>최고·최저 기온</li>
-                <li>일교차</li>
-                <li>기온 변화량</li>
-            </ul>
-        </div>
-        """,
-        unsafe_allow_html=True,
+### 🌡 기온
+
+- 평균 기온
+- 최고·최저 기온
+- 일교차
+- 기온 변화량
+"""
     )
 
 with v2:
-    st.markdown(
+    st.info(
         """
-        <div class="equal-card variable-card">
-            <h3>💧 습도</h3>
-            <ul>
-                <li>평균 상대습도</li>
-                <li>습도 변화량</li>
-                <li>고습 지속일수</li>
-                <li>습도 변동성</li>
-            </ul>
-        </div>
-        """,
-        unsafe_allow_html=True,
+### 💧 습도
+
+- 평균 상대습도
+- 습도 변화량
+- 고습 지속일수
+- 습도 변동성
+"""
     )
 
 with v3:
-    st.markdown(
+    st.info(
         """
-        <div class="equal-card variable-card">
-            <h3>🌧 강수</h3>
-            <ul>
-                <li>일 강수량</li>
-                <li>최근 7일 강수량</li>
-                <li>습윤 환경 지속성</li>
-            </ul>
-        </div>
-        """,
-        unsafe_allow_html=True,
+### 🌧 강수
+
+- 일 강수량
+- 최근 7일 강수량
+- 최근 28일 강수량
+- 습윤 환경 지속성
+"""
     )
 
 with v4:
-    st.markdown(
+    st.info(
         """
-        <div class="equal-card variable-card">
-            <h3>🌫 대기환경</h3>
-            <ul>
-                <li>PM10</li>
-                <li>PM2.5</li>
-                <li>O₃</li>
-                <li>NO₂</li>
-                <li>SO₂</li>
-            </ul>
-        </div>
-        """,
-        unsafe_allow_html=True,
+### 🌫 대기환경
+
+- PM10 · PM2.5
+- O₃ · NO₂
+- CO · SO₂
+- 대기오염 이동평균
+"""
     )
 
 st.divider()
@@ -390,6 +299,8 @@ with col1:
 - 회화: 온·습도 변화와 고습 환경의 영향 고려
 - 기타: 특정 재질로 분류하기 어려운 문화유산
 
+재질별 환경 민감도를 상대적으로 다르게 적용하여
+동일한 환경조건에서도 문화유산별 취약도가 달라지도록 구성합니다.
 """
     )
 
@@ -405,6 +316,8 @@ with col2:
 - 반실외: 일부 차폐되어 있으나 외부 환경의 영향을 받는 환경
 - 실내: 외부 기상환경의 직접적인 영향이 상대적으로 작은 환경
 
+노출 정도에 따라 환경요인의 영향을 상대적으로 조정하여
+취약도 계산에 반영합니다.
 """
     )
 
@@ -432,70 +345,55 @@ st.subheader("💻 활용 기술")
 c1, c2, c3, c4 = st.columns(4)
 
 with c1:
-    st.markdown(
+    st.info(
         """
-        <div class="equal-card tech-blue">
-            <h3>📊 데이터 분석</h3>
-            <ul>
-                <li>Python</li>
-                <li>Pandas</li>
-                <li>NumPy</li>
-                <li>데이터 전처리</li>
-                <li>시계열 Feature 생성</li>
-            </ul>
-        </div>
-        """,
-        unsafe_allow_html=True,
+### 📊 데이터 분석
+
+- Python
+- Pandas
+- NumPy
+- 데이터 전처리
+- 시계열 Feature 생성
+"""
     )
 
 with c2:
-    st.markdown(
+    st.success(
         """
-        <div class="equal-card tech-green">
-            <h3>🤖 머신러닝</h3>
-            <ul>
-                <li>Scikit-learn</li>
-                <li>Random Forest</li>
-                <li>Extra Trees</li>
-                <li>Gradient Boosting</li>
-                <li>분류모델 성능평가</li>
-            </ul>
-        </div>
-        """,
-        unsafe_allow_html=True,
+### 🤖 머신러닝
+
+- Scikit-learn
+- Random Forest
+- Extra Trees
+- Gradient Boosting
+- 분류모델 성능평가
+"""
     )
 
 with c3:
-    st.markdown(
+    st.warning(
         """
-        <div class="equal-card tech-yellow">
-            <h3>🗺 공간 시각화</h3>
-            <ul>
-                <li>Folium</li>
-                <li>Plotly</li>
-                <li>문화유산 위치정보</li>
-                <li>지도 기반 결과 표현</li>
-            </ul>
-        </div>
-        """,
-        unsafe_allow_html=True,
+### 🗺 공간 시각화
+
+- Folium
+- Plotly
+- 문화유산 위치정보
+- 지도 기반 결과 표현
+- 공간정보 분석
+"""
     )
 
 with c4:
-    st.markdown(
+    st.error(
         """
-        <div class="equal-card tech-red">
-            <h3>🌐 웹·AI 서비스</h3>
-            <ul>
-                <li>Streamlit</li>
-                <li>GitHub</li>
-                <li>공공데이터 API</li>
-                <li>Gemini AI</li>
-                <li>실시간 데이터 연동</li>
-            </ul>
-        </div>
-        """,
-        unsafe_allow_html=True,
+### 🌐 웹·AI 서비스
+
+- Streamlit
+- GitHub
+- 공공데이터 API
+- Gemini AI
+- 실시간 데이터 연동
+"""
     )
 
 st.divider()
