@@ -631,66 +631,223 @@ def run_prediction(
 # ============================================================
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def fetch_weather_range(start_date: date, end_date: date) -> pd.DataFrame:
+def fetch_weather_range(
+    start_date: date,
+    end_date: date,
+) -> pd.DataFrame:
+    """
+    ASOS 장기간 수집용.
+    전체 기간을 한 번에 요청하지 않고 30일 단위로 나누어 수집한다.
+    한 구간이 실패하면 3회 재시도하고, 그래도 실패하면 그 구간을
+    더 작은 기간으로 자동 분할한다.
+    """
+
     if not ASOS_SERVICE_KEY:
         raise ValueError(
             "Streamlit Secrets에 ASOS_SERVICE_KEY 또는 SERVICE_KEY가 없습니다."
         )
 
-    params = {
-        "serviceKey": ASOS_SERVICE_KEY,
-        "numOfRows": "1000",
-        "pageNo": "1",
-        "dataType": "JSON",
-        "dataCd": "ASOS",
-        "dateCd": "DAY",
-        "startDt": start_date.strftime("%Y%m%d"),
-        "endDt": end_date.strftime("%Y%m%d"),
-        "stnIds": STN_ID,
-    }
+    def request_once(req_start: date, req_end: date):
+        params = {
+            "serviceKey": ASOS_SERVICE_KEY,
+            "numOfRows": "999",
+            "pageNo": "1",
+            "dataType": "JSON",
+            "dataCd": "ASOS",
+            "dateCd": "DAY",
+            "startDt": req_start.strftime("%Y%m%d"),
+            "endDt": req_end.strftime("%Y%m%d"),
+            "stnIds": STN_ID,
+        }
 
-    response = requests.get(ASOS_URL, params=params, timeout=60)
-    response.raise_for_status()
-    result = response.json()
+        for wait_seconds in [0, 2, 5]:
+            if wait_seconds:
+                time.sleep(wait_seconds)
 
-    items = (
-        result.get("response", {})
-        .get("body", {})
-        .get("items", {})
-        .get("item", [])
-    )
-    if not items:
-        raise RuntimeError(f"ASOS 데이터가 없습니다: {start_date} ~ {end_date}")
+            try:
+                response = requests.get(
+                    ASOS_URL,
+                    params=params,
+                    timeout=60,
+                )
+                response.raise_for_status()
 
-    weather = pd.DataFrame(items)
+                if not response.text.strip().startswith("{"):
+                    continue
+
+                result = response.json()
+
+                header = (
+                    result.get("response", {})
+                    .get("header", {})
+                )
+
+                result_code = str(header.get("resultCode", ""))
+                result_msg = header.get("resultMsg", "")
+
+                if result_code not in ["00", "0", ""]:
+                    # 인증 오류 등은 분할해도 해결되지 않으므로
+                    # 마지막 재시도까지 진행 후 None 처리
+                    continue
+
+                items_obj = (
+                    result.get("response", {})
+                    .get("body", {})
+                    .get("items", {})
+                )
+
+                if isinstance(items_obj, dict):
+                    items = items_obj.get("item", [])
+                else:
+                    items = []
+
+                if isinstance(items, dict):
+                    items = [items]
+
+                # 정상 응답이지만 해당 기간에 자료가 없는 경우도 []
+                return items or []
+
+            except Exception:
+                continue
+
+        return None
+
+    def collect_period(req_start: date, req_end: date):
+        """
+        요청 자체가 계속 실패하면 기간을 절반으로 나눈다.
+        하루까지 실패하면 해당 날짜를 failed_dates에 남긴다.
+        """
+        items = request_once(req_start, req_end)
+
+        if items is not None:
+            return items, []
+
+        days = (req_end - req_start).days + 1
+
+        if days <= 1:
+            return [], [req_start]
+
+        left_days = days // 2
+        midpoint = req_start + timedelta(days=left_days - 1)
+        right_start = midpoint + timedelta(days=1)
+
+        left_items, left_failed = collect_period(
+            req_start,
+            midpoint,
+        )
+        right_items, right_failed = collect_period(
+            right_start,
+            req_end,
+        )
+
+        return (
+            left_items + right_items,
+            left_failed + right_failed,
+        )
+
+    all_items = []
+    failed_dates = []
+
+    # 30일씩 나누어 요청
+    chunk_start = start_date
+
+    while chunk_start <= end_date:
+        chunk_end = min(
+            chunk_start + timedelta(days=29),
+            end_date,
+        )
+
+        items, failed = collect_period(
+            chunk_start,
+            chunk_end,
+        )
+
+        all_items.extend(items)
+        failed_dates.extend(failed)
+
+        chunk_start = chunk_end + timedelta(days=1)
+        time.sleep(0.15)
+
+    if not all_items:
+        raise RuntimeError(
+            f"ASOS 데이터를 전혀 수집하지 못했습니다: "
+            f"{start_date} ~ {end_date}. "
+            "ASOS_SERVICE_KEY와 공공데이터포털 API 활용신청 상태를 확인하세요."
+        )
+
+    weather = pd.DataFrame(all_items)
 
     required = [
-        "tm", "avgTa", "maxTa", "minTa", "avgRhm",
-        "sumRn", "avgWs", "sumSsHr", "avgTs",
+        "tm",
+        "avgTa",
+        "maxTa",
+        "minTa",
+        "avgRhm",
+        "sumRn",
+        "avgWs",
+        "sumSsHr",
+        "avgTs",
     ]
-    missing = [c for c in required if c not in weather.columns]
+
+    missing = [
+        col for col in required
+        if col not in weather.columns
+    ]
+
     if missing:
-        raise ValueError(f"ASOS 응답에 필요한 컬럼이 없습니다: {missing}")
+        raise ValueError(
+            f"ASOS 응답에 필요한 컬럼이 없습니다: {missing}"
+        )
 
     weather = weather[required].copy()
-    weather.columns = [
-        "date", "temp_avg", "temp_max", "temp_min", "humidity",
-        "rainfall", "wind_speed", "sunshine_hours", "ground_temp",
-    ]
-    weather["date"] = pd.to_datetime(weather["date"], errors="coerce").dt.floor("D")
 
-    numeric_cols = [c for c in weather.columns if c != "date"]
+    weather.columns = [
+        "date",
+        "temp_avg",
+        "temp_max",
+        "temp_min",
+        "humidity",
+        "rainfall",
+        "wind_speed",
+        "sunshine_hours",
+        "ground_temp",
+    ]
+
+    weather["date"] = pd.to_datetime(
+        weather["date"],
+        errors="coerce",
+    ).dt.floor("D")
+
+    numeric_cols = [
+        col for col in weather.columns
+        if col != "date"
+    ]
+
     for col in numeric_cols:
-        weather[col] = pd.to_numeric(weather[col], errors="coerce")
+        weather[col] = pd.to_numeric(
+            weather[col],
+            errors="coerce",
+        )
 
     weather["rainfall"] = weather["rainfall"].fillna(0)
 
-    return (
-        weather.dropna(subset=["date"])
+    weather = (
+        weather
+        .dropna(subset=["date"])
         .sort_values("date")
         .drop_duplicates("date", keep="last")
         .reset_index(drop=True)
     )
+
+    if weather.empty:
+        raise RuntimeError(
+            "ASOS 응답은 받았지만 변환 후 사용 가능한 날짜 자료가 없습니다."
+        )
+
+    # 디버깅/화면 안내용
+    weather.attrs["failed_dates"] = sorted(set(failed_dates))
+
+    return weather
 
 
 # ============================================================
@@ -1083,7 +1240,30 @@ try:
     if run:
         progress = st.progress(0, text="영천 ASOS 일자료 수집 중...")
 
-        weather = fetch_weather_range(COLLECT_START_DATE, REQUEST_END_DATE)
+        weather = fetch_weather_range(
+            COLLECT_START_DATE,
+            REQUEST_END_DATE,
+        )
+
+        failed_weather_dates = weather.attrs.get("failed_dates", [])
+
+        st.caption(
+            f"🌦 ASOS 실제 수집 범위: "
+            f"{pd.to_datetime(weather['date']).min():%Y-%m-%d} ~ "
+            f"{pd.to_datetime(weather['date']).max():%Y-%m-%d}"
+        )
+
+        if failed_weather_dates:
+            st.warning(
+                f"⚠️ ASOS 서버 응답 실패로 "
+                f"{len(failed_weather_dates)}일을 직접 수집하지 못했습니다."
+            )
+            with st.expander("🌦 ASOS 수집 실패 날짜 확인"):
+                st.write([
+                    d.strftime("%Y-%m-%d")
+                    for d in failed_weather_dates
+                ])
+
         progress.progress(25, text="영천 AirKorea 일자료 수집 중...")
 
         # ASOS는 전일 일자료가 당일 늦게 공개될 수 있으므로
@@ -1271,7 +1451,7 @@ try:
                     "risk_index": "위험지수",
                     "safe_probability": "안전확률(%)",
                     "caution_probability": "주의확률(%)",
-                    "danger_probability": "위험확률(%)", 
+                    "danger_probability": "위험확률(%)",
                 }),
                 use_container_width=True,
                 hide_index=True,
