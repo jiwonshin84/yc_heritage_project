@@ -702,10 +702,45 @@ with st.expander("📊 Pico W 일별 통계 보기", expanded=False):
         "humidity_sensor", "pressure_sensor", "light_sensor", "pm1_sensor",
         "pm25_sensor", "pm10_sensor",
     ]
+
+    # 화면 표시용 한글 컬럼명
+    daily_display = (
+        pico_daily[show_cols]
+        .sort_values("date", ascending=False)
+        .rename(
+            columns={
+                "date": "날짜",
+                "sensor_count": "전체 측정 건수",
+                "temp_avg_sensor": "평균 기온(℃)",
+                "temp_max_sensor": "최고 기온(℃)",
+                "temp_min_sensor": "최저 기온(℃)",
+                "humidity_sensor": "평균 습도(%)",
+                "pressure_sensor": "평균 기압(hPa)",
+                "light_sensor": "평균 조도(lx)",
+                "pm1_sensor": "평균 PM1(㎍/㎥)",
+                "pm25_sensor": "평균 PM2.5(㎍/㎥)",
+                "pm10_sensor": "평균 PM10(㎍/㎥)",
+            }
+        )
+    )
+
     st.dataframe(
-        pico_daily[show_cols].sort_values("date", ascending=False),
+        daily_display,
         use_container_width=True,
         hide_index=True,
+        column_config={
+            "날짜": st.column_config.DateColumn("날짜", format="YYYY-MM-DD"),
+            "전체 측정 건수": st.column_config.NumberColumn("전체 측정 건수", format="%d"),
+            "평균 기온(℃)": st.column_config.NumberColumn("평균 기온(℃)", format="%.1f"),
+            "최고 기온(℃)": st.column_config.NumberColumn("최고 기온(℃)", format="%.1f"),
+            "최저 기온(℃)": st.column_config.NumberColumn("최저 기온(℃)", format="%.1f"),
+            "평균 습도(%)": st.column_config.NumberColumn("평균 습도(%)", format="%.1f"),
+            "평균 기압(hPa)": st.column_config.NumberColumn("평균 기압(hPa)", format="%.1f"),
+            "평균 조도(lx)": st.column_config.NumberColumn("평균 조도(lx)", format="%.1f"),
+            "평균 PM1(㎍/㎥)": st.column_config.NumberColumn("평균 PM1(㎍/㎥)", format="%.1f"),
+            "평균 PM2.5(㎍/㎥)": st.column_config.NumberColumn("평균 PM2.5(㎍/㎥)", format="%.1f"),
+            "평균 PM10(㎍/㎥)": st.column_config.NumberColumn("평균 PM10(㎍/㎥)", format="%.1f"),
+        },
     )
 
 
