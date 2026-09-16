@@ -2510,7 +2510,7 @@ with left_chart:
         values="문화유산 수",
         color="등급",
         color_discrete_map=GRADE_COLOR,
-        hole=0.62,
+        hole=0.45,
         title="안전·주의·위험 등급 분포",
     )
 
