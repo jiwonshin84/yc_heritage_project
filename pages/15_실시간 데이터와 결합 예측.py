@@ -255,27 +255,67 @@ def load_pico_history() -> pd.DataFrame:
 
 
 def make_pico_daily(sensor_df: pd.DataFrame) -> pd.DataFrame:
-    """센서 시계열을 모델과 맞는 일자료로 집계한다."""
+    """
+    Pico W 센서 시계열을 모델과 맞는 일자료로 집계한다.
+
+    전처리 원칙
+    - None, 빈 문자열, 숫자 변환 불가 값 -> NaN
+    - 센서값 0 -> 측정 실패로 간주하여 NaN
+    - 일별 mean/max/min/count 계산 시 NaN은 자동 제외
+    - 해당 날짜에 유효 센서값이 하나도 없으면 일별 센서값은 NaN으로 남고,
+      이후 기상청/AirKorea 공공데이터로 보완한다.
+    """
     work = sensor_df.copy()
     work["date"] = work["timestamp"].dt.floor("D")
+
+    sensor_cols = [
+        "temperature",
+        "humidity",
+        "pressure",
+        "light",
+        "pm1",
+        "pm25",
+        "pm10",
+    ]
+
+    for col in sensor_cols:
+        if col not in work.columns:
+            work[col] = np.nan
+
+        work[col] = pd.to_numeric(
+            work[col],
+            errors="coerce",
+        )
+
+        # 이 프로젝트의 Pico 센서에서는 0을 측정 실패값으로 처리한다.
+        # 공공데이터의 강수량 0 mm 등에는 이 규칙을 적용하지 않는다.
+        work.loc[work[col] == 0, col] = np.nan
 
     daily = (
         work.groupby("date", as_index=False)
         .agg(
             sensor_count=("timestamp", "count"),
+            temp_valid_count=("temperature", "count"),
             temp_avg_sensor=("temperature", "mean"),
             temp_max_sensor=("temperature", "max"),
             temp_min_sensor=("temperature", "min"),
+            humidity_valid_count=("humidity", "count"),
             humidity_sensor=("humidity", "mean"),
+            pressure_valid_count=("pressure", "count"),
             pressure_sensor=("pressure", "mean"),
+            light_valid_count=("light", "count"),
             light_sensor=("light", "mean"),
+            pm1_valid_count=("pm1", "count"),
             pm1_sensor=("pm1", "mean"),
+            pm25_valid_count=("pm25", "count"),
             pm25_sensor=("pm25", "mean"),
+            pm10_valid_count=("pm10", "count"),
             pm10_sensor=("pm10", "mean"),
         )
         .sort_values("date")
         .reset_index(drop=True)
     )
+
     return daily
 
 
@@ -895,4 +935,3 @@ st.caption(
     "학습한 모델의 분류 결과입니다. Pico W 실측값과 공공데이터는 측정 위치·장비·수집 주기가 서로 다르므로 "
     "연구 결과 해석 시 데이터 출처 차이를 함께 고려해야 합니다."
 )
-
