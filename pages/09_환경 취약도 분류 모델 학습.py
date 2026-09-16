@@ -62,6 +62,7 @@ st.info(
 
 DATA_DIR = Path("data/processed")
 MODEL_DIR = Path("models")
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
 # 최신 학습 데이터 수집 페이지에서 저장되는 파일
@@ -1232,11 +1233,35 @@ def save_training_outputs(
         encoding="utf-8-sig",
     )
 
+    train_dates = pd.to_datetime(
+        dataset.loc[dataset["date"] < pd.Timestamp("2025-01-01"), "date"],
+        errors="coerce",
+    ).dropna()
+    test_dates = pd.to_datetime(
+        dataset.loc[
+            (dataset["date"] >= pd.Timestamp("2025-01-01"))
+            & (dataset["date"] < pd.Timestamp("2026-01-01")),
+            "date",
+        ],
+        errors="coerce",
+    ).dropna()
+
+    training_period = (
+        f"{train_dates.min().date()}~{train_dates.max().date()}"
+        if not train_dates.empty
+        else "확인 불가"
+    )
+    final_test_period = (
+        f"{test_dates.min().date()}~{test_dates.max().date()}"
+        if not test_dates.empty
+        else "확인 불가"
+    )
+
     metadata = {
         "model_name": best_model_name,
         "feature_count": len(feature_cols),
-        "training_period": "2019-01-01~2024-12-31",
-        "final_test_period": "2025-01-01~2025-12-31",
+        "training_period": training_period,
+        "final_test_period": final_test_period,
         "target_definition": {
             "안전": "0 <= material_risk < 40",
             "주의": "40 <= material_risk < 70",
@@ -1400,6 +1425,31 @@ if train_clicked:
             train_df
         )
 
+        # Target은 모델 학습 성공 여부와 관계없이 즉시 저장한다.
+        # Streamlit Cloud의 로컬 파일은 영구 저장소가 아니므로
+        # GitHub Secrets가 설정되어 있으면 data/processed에도 바로 업로드한다.
+        TARGET_DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
+        dataset.to_csv(
+            TARGET_DATA_PATH,
+            index=False,
+            encoding="utf-8-sig",
+        )
+
+        if not TARGET_DATA_PATH.exists():
+            raise IOError(
+                f"Target 데이터 저장에 실패했습니다: {TARGET_DATA_PATH}"
+            )
+
+        status.write(
+            f"✅ Target 데이터 저장 완료: {TARGET_DATA_PATH} "
+            f"({len(dataset):,}건)"
+        )
+
+        upload_file_to_github(
+            TARGET_DATA_PATH,
+            "data/processed/[2019_2025] heritage_target_dataset.csv",
+        )
+
         status.update(
             label="🧩 머신러닝 Feature 구성 및 Leakage 검사 중...",
             state="running",
@@ -1458,6 +1508,10 @@ if train_clicked:
             (
                 FEATURE_IMPORTANCE_PATH,
                 "models/feature_importance.csv",
+            ),
+            (
+                TARGET_DATA_PATH,
+                "data/processed/[2019_2025] heritage_target_dataset.csv",
             ),
         ]
 
@@ -2005,6 +2059,8 @@ if (
         saved_files = [
             MODEL_PATH,
             FEATURE_COLS_PATH,
+            TRAIN_MEDIANS_PATH,
+            BUNDLE_PATH,
             MODEL_META_PATH,
             MODEL_SUMMARY_PATH,
             FOLD_RESULTS_PATH,
