@@ -19,21 +19,21 @@ pages = {
         st.Page("pages/05_AI 문화재 해설.py", title="AI 문화재 해설", icon="🤖"),     
     ],
     "환경 취약도 분석": [        
-        st.Page("pages/10_문화유산 취약도 예측.py", title="문화유산 취약도 예측", icon="💡"),     
-        st.Page("pages/09_최근 40일 환경 데이터.py", title="최근 40일 환경 데이터", icon="🔵"),  
-        st.Page("pages/06_학습 데이터 수집.py", title="학습 데이터 수집", icon="📥"),
-        st.Page("pages/07_환경 취약도 분류 모델 학습.py", title="환경 취약도 분류 모델 학습", icon="🧠"),     
-        st.Page("pages/08_모델 성능 및 최적화.py", title="모델 성능 및 최적화", icon="📈"),             
+        st.Page("pages/06_문화유산 취약도 예측.py", title="문화유산 취약도 예측", icon="💡"),     
+        st.Page("pages/07_최근 40일 환경 데이터.py", title="최근 40일 환경 데이터", icon="🔵"),  
+        st.Page("pages/08_학습 데이터 수집.py", title="학습 데이터 수집", icon="📥"),
+        st.Page("pages/09_환경 취약도 분류 모델 학습.py", title="환경 취약도 분류 모델 학습", icon="🧠"),     
+        st.Page("pages/10_모델 성능 및 최적화.py", title="모델 성능 및 최적화", icon="📈"),        
+        st.Page("pages/11_2026년 모델 검증.py", title="2026년 모델 검증", icon="🧪"),          
     ],
     "실시간 모니터링": [
-        st.Page("pages/11_Pico 실시간 환경 데이터.py", title=" Pico 실시간 환경 데이터", icon="📡"),
+        st.Page("pages/12_Pico 실시간 환경 데이터.py", title=" Pico 실시간 환경 데이터", icon="📡"),
+        st.Page("pages/13_실시간 환경 위험 진단.py", title="실시간 환경 위험 진단", icon="⚡"),  
+        st.Page("pages/14_실측 데이터 기반 취약도 예측.py", title="실측 데이터 기반 취약도 예측", icon="🛡️"),
     ],
     
-    "부가 프로젝트": [
-        st.Page("pages/12_테스트.py", title="테스트", icon="🧪"),     
-        st.Page("pages/13_군집 분석.py", title="군집 분석", icon="🛡️"),
-        st.Page("pages/14_테스트2.py", title="테스트2", icon="🛡️"),        
-        st.Page("pages/15_실측 데이터 기반 취약도 예측.py", title="실측 데이터 기반 취약도 예측", icon="🛡️"),
+    "공간 분석": [   
+        st.Page("pages/15_문화유산 관리권역 군집 분석.py", title="군집 분석", icon="🗺️"),   
     ]
 }
 
