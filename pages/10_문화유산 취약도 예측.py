@@ -115,6 +115,10 @@ MODEL_META_PATH = MODEL_DIR / "model_metadata.json"
 LATEST_PREDICTION_PATH = DATA_DIR / "latest_prediction.csv"
 LATEST_ENVIRONMENT_PATH = DATA_DIR / "latest_40_environment.csv"
 
+# 영천 국가유산 공간 정보 페이지와 동일한 좌표 원본
+# 지도 좌표는 반드시 이 파일의 문화재명(국문)·위도·경도를 사용한다.
+SPATIAL_HERITAGE_PATH = DATA_DIR / "yc_heritage_detail_enriched.csv"
+
 HERITAGE_CANDIDATES = [
     DATA_DIR / "yc_heritage_feature.csv",
     DATA_DIR / "yc_heritage_detail_enriched.csv",
@@ -496,6 +500,135 @@ def load_heritage_data(
         )
         .reset_index(drop=True)
     )
+
+
+@st.cache_data(show_spinner=False)
+def load_spatial_coordinates() -> pd.DataFrame:
+    """
+    '영천 국가유산 공간 정보' 페이지와 동일한 원본에서 좌표를 읽는다.
+
+    예측용 문화유산 특성 파일에 위도·경도가 있더라도 사용하지 않고,
+    yc_heritage_detail_enriched.csv의 문화재명(국문)을 기준으로
+    latitude / longitude를 다시 결합하여 두 페이지의 위치를 통일한다.
+    """
+
+    if not SPATIAL_HERITAGE_PATH.exists():
+        raise FileNotFoundError(
+            "공간정보 좌표 원본 파일을 찾을 수 없습니다: "
+            f"{SPATIAL_HERITAGE_PATH}"
+        )
+
+    try:
+        spatial = pd.read_csv(
+            SPATIAL_HERITAGE_PATH,
+            encoding="utf-8-sig",
+        )
+    except UnicodeDecodeError:
+        spatial = pd.read_csv(
+            SPATIAL_HERITAGE_PATH,
+            encoding="utf-8",
+        )
+
+    spatial.columns = (
+        spatial.columns
+        .astype(str)
+        .str.strip()
+    )
+
+    required = [
+        "문화재명(국문)",
+        "위도",
+        "경도",
+    ]
+
+    missing = [
+        col
+        for col in required
+        if col not in spatial.columns
+    ]
+
+    if missing:
+        raise ValueError(
+            "공간정보 좌표 원본에 필요한 컬럼이 없습니다: "
+            f"{missing}"
+        )
+
+    spatial = spatial[required].copy()
+
+    spatial["heritage_name"] = (
+        spatial["문화재명(국문)"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
+
+    spatial["latitude"] = pd.to_numeric(
+        spatial["위도"],
+        errors="coerce",
+    )
+
+    spatial["longitude"] = pd.to_numeric(
+        spatial["경도"],
+        errors="coerce",
+    )
+
+    # 공간 정보 페이지와 동일하게 좌표가 없거나 범위를 벗어난 값은 지도에서 제외
+    spatial = spatial.dropna(
+        subset=[
+            "heritage_name",
+            "latitude",
+            "longitude",
+        ]
+    ).copy()
+
+    spatial = spatial[
+        spatial["latitude"].between(-90, 90)
+        & spatial["longitude"].between(-180, 180)
+    ].copy()
+
+    return (
+        spatial[
+            [
+                "heritage_name",
+                "latitude",
+                "longitude",
+            ]
+        ]
+        .drop_duplicates(
+            subset=["heritage_name"],
+            keep="first",
+        )
+        .reset_index(drop=True)
+    )
+
+
+def apply_spatial_coordinates(
+    heritage_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    예측용 문화유산 데이터에 공간정보 페이지의 좌표를 강제로 적용한다.
+    """
+
+    spatial_coords = load_spatial_coordinates()
+    work = heritage_df.copy()
+
+    # 예측용 파일에 들어 있던 좌표는 제거하여 공간정보 원본 좌표로 완전히 교체
+    work = work.drop(
+        columns=[
+            "latitude",
+            "longitude",
+        ],
+        errors="ignore",
+    )
+
+    work = work.merge(
+        spatial_coords,
+        on="heritage_name",
+        how="left",
+        validate="m:1",
+    )
+
+    return work
 
 
 def get_recent_environment():
@@ -1670,6 +1803,12 @@ try:
     heritage_path = find_heritage_path()
     heritage_df = load_heritage_data(
         str(heritage_path)
+    )
+
+    # 지도 좌표는 '영천 국가유산 공간 정보'와 동일한
+    # yc_heritage_detail_enriched.csv의 위도·경도로 강제 통일
+    heritage_df = apply_spatial_coordinates(
+        heritage_df
     )
 except Exception as e:
     st.error(
