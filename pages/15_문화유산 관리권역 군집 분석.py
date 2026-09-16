@@ -86,7 +86,7 @@ c1, c2, c3, c4 = st.columns(4)
 with c1: st.metric("분석 대상", f"{len(df_base):,}건")
 with c2: st.metric("위험 관리 지구(k)", f"{k_value}개")
 with c3: st.metric("전체 평균 가치", f"{df_base['가치점수'].mean():.2f}")
-with c4: st.metric("분석 신뢰도(실루엣)", f"{sil_avg:.3f}")
+with c4: st.metric("군집 분리도", f"{sil_avg:.3f}")
 
 st.divider()
 
