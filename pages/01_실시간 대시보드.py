@@ -48,17 +48,11 @@ AIR_URL = "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMes
 
 # Streamlit Secrets 설정 확인
 if not KMA_AUTH_KEY:
-  st.error(
-      "❌ Streamlit Secrets에 KMA_AUTH_KEY가 없습니다. "
-      "Streamlit Cloud의 Settings → Secrets에 인증키를 등록해주세요."
-  )
+  st.error("❌ Streamlit Secrets에 KMA_AUTH_KEY가 없습니다. Streamlit Cloud의 Settings → Secrets에 인증키를 등록해주세요.")
   st.stop()
 
 if not AIR_SERVICE_KEY:
-  st.error(
-      "❌ Streamlit Secrets에 AIR_SERVICE_KEY가 없습니다. "
-      "Streamlit Cloud의 Settings → Secrets에 인증키를 등록해주세요."
-  )
+  st.error("❌ Streamlit Secrets에 AIR_SERVICE_KEY가 없습니다. Streamlit Cloud의 Settings → Secrets에 인증키를 등록해주세요.")
   st.stop()
 
 # 관측소 좌표 설정
@@ -546,13 +540,6 @@ with right_col:
   )
 
   # 2. 문화재 보존 관리 + 최근 예측 현황 카드
-  #
-  # 중요:
-  # st.markdown(..., unsafe_allow_html=True)는 HTML 내부에 빈 줄 + 들여쓰기가
-  # 있을 경우 Markdown 코드블록으로 해석될 수 있어 HTML 태그가 그대로
-  # 화면에 출력되는 현상이 발생할 수 있습니다.
-  # 따라서 이 카드는 st.html()로 직접 렌더링합니다.
-
   if latest_prediction_status["source"] is not None:
     prediction_html = f"""
     <div style="margin-top:10px; padding-top:9px; border-top:1px solid #e5e7eb;">
