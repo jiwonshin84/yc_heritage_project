@@ -32,7 +32,8 @@ pages = {
     "부가 프로젝트": [
         st.Page("pages/12_테스트.py", title="테스트", icon="🧪"),     
         st.Page("pages/13_군집 분석.py", title="군집 분석", icon="🛡️"),
-        st.Page("pages/14_테스트2.py", title="테스트2", icon="🛡️"),
+        st.Page("pages/14_테스트2.py", title="테스트2", icon="🛡️"),        
+        st.Page("pages/15_실시간 데이터와 결합 예측.py", title="실시간 데이터와 결합 예측", icon="🛡️"),
     ]
 }
 
