@@ -2469,33 +2469,74 @@ else:
 
 
 
+
 # ============================================================
-# 12. 한눈에 보는 예측 결과
+# 12. 한눈에 보는 예측 결과 - 2 × 2 대시보드
 # ============================================================
 
 st.markdown("---")
 st.subheader("🎨 한눈에 보는 예측 결과")
 
-# 두 그래프를 동일한 크기의 1행 2열로 배치
-left_chart, right_chart = st.columns(
+
+# ============================================================
+# 공통 설정
+# ============================================================
+
+# 등급 순서
+grade_order = ["안전", "주의", "위험"]
+
+# 등급 색상
+grade_color = {
+    "안전": "#2ECC71",
+    "주의": "#F39C12",
+    "위험": "#E74C3C",
+}
+
+# 재질 순서
+material_order = [
+    "석조",
+    "목조",
+    "금속",
+    "회화",
+    "기타",
+]
+
+# 노출환경 순서
+exposure_order = [
+    "실외",
+    "반실외",
+    "실내",
+]
+
+# 노출환경 색상
+exposure_color = {
+    "실외": "#1565C0",
+    "반실외": "#64B5F6",
+    "실내": "#EF5350",
+}
+
+
+# ============================================================
+# 1행
+# ============================================================
+
+row1_left, row1_right = st.columns(
     [1, 1],
     gap="large",
 )
 
 
-# ------------------------------------------------------------
-# 12-1. 안전·주의·위험 등급 분포 Donut
-# ------------------------------------------------------------
+# ============================================================
+# 12-1. 안전·주의·위험 등급 분포
+# ============================================================
 
-with left_chart:
+with row1_left:
 
     grade_counts = (
-        result_df[
-            "predicted_grade"
-        ]
+        result_df["predicted_grade"]
         .value_counts()
         .reindex(
-            GRADE_ORDER,
+            grade_order,
             fill_value=0,
         )
         .rename_axis("등급")
@@ -2504,28 +2545,36 @@ with left_chart:
         )
     )
 
+    total_count = int(
+        grade_counts["문화유산 수"].sum()
+    )
+
     fig_grade = px.pie(
         grade_counts,
         names="등급",
         values="문화유산 수",
         color="등급",
-        color_discrete_map=GRADE_COLOR,
+        color_discrete_map=grade_color,
+
+        # 숫자가 작을수록 도넛이 굵어짐
         hole=0.45,
+
         title="안전·주의·위험 등급 분포",
     )
 
     fig_grade.update_traces(
         textposition="inside",
         textinfo="label+percent",
+
         hovertemplate=(
             "<b>%{label}</b><br>"
-            "문화유산 %{value}개<br>"
-            "%{percent}"
+            "문화유산 수: %{value}개<br>"
+            "비율: %{percent}"
             "<extra></extra>"
         ),
     )
 
-    # 도넛 중앙에 전체 문화유산 수 표시
+    # 도넛 가운데 전체 문화유산 수
     fig_grade.add_annotation(
         text=(
             f"<b>{total_count}</b>"
@@ -2535,21 +2584,24 @@ with left_chart:
         y=0.5,
         showarrow=False,
         font=dict(
-            size=20
+            size=18
         ),
     )
 
     fig_grade.update_layout(
         height=470,
+
         margin=dict(
             t=70,
-            b=30,
+            b=50,
             l=20,
             r=20,
         ),
+
         legend=dict(
+            title_text="",
             orientation="h",
-            y=-0.08,
+            y=-0.05,
             x=0.5,
             xanchor="center",
         ),
@@ -2561,19 +2613,20 @@ with left_chart:
     )
 
 
-# ------------------------------------------------------------
+# ============================================================
 # 12-2. 재질별 안전·주의·위험 분포
-# ------------------------------------------------------------
+# ============================================================
 
-with right_chart:
+with row1_right:
 
-    material_summary = (
+    material_grade = (
         result_df
         .groupby(
             [
                 "material",
                 "predicted_grade",
-            ]
+            ],
+            observed=True,
         )
         .size()
         .reset_index(
@@ -2581,18 +2634,25 @@ with right_chart:
         )
     )
 
-    fig_material = px.bar(
-        material_summary,
+    fig_material_grade = px.bar(
+        material_grade,
+
         x="material",
         y="문화유산 수",
+
         color="predicted_grade",
-        color_discrete_map=GRADE_COLOR,
+
+        color_discrete_map=grade_color,
+
         category_orders={
-            "material": MATERIAL_ORDER,
-            "predicted_grade": GRADE_ORDER,
+            "material": material_order,
+            "predicted_grade": grade_order,
         },
+
         barmode="stack",
+
         title="재질별 안전·주의·위험 분포",
+
         labels={
             "material": "재질",
             "predicted_grade": "예측 등급",
@@ -2600,71 +2660,207 @@ with right_chart:
         },
     )
 
-    fig_material.update_traces(
+    fig_material_grade.update_traces(
         hovertemplate=(
             "<b>%{x}</b><br>"
-            "문화유산 %{y}개"
+            "문화유산 수: %{y}개"
             "<extra></extra>"
         ),
     )
 
-    fig_material.update_layout(
+    fig_material_grade.update_layout(
         height=470,
+
         margin=dict(
             t=70,
-            b=30,
+            b=50,
             l=20,
             r=20,
         ),
+
+        xaxis_title="재질",
+        yaxis_title="문화유산 수",
+
         legend=dict(
             title_text="예측 등급",
             orientation="h",
-            y=-0.08,
+            y=-0.12,
             x=0.5,
             xanchor="center",
         ),
-        xaxis_title="재질",
-        yaxis_title="문화유산 수",
     )
 
     st.plotly_chart(
-        fig_material,
+        fig_material_grade,
         use_container_width=True,
     )
 
 
-# ------------------------------------------------------------
-# 12-2. 재질 × 노출환경별 평균 환경 취약도 지수
-# ------------------------------------------------------------
+# ============================================================
+# 2행
+# ============================================================
 
-with right_chart:
+row2_left, row2_right = st.columns(
+    [1, 1],
+    gap="large",
+)
 
-    # 재질 × 노출환경별 평균 환경 취약도 지수 계산
+
+# ============================================================
+# 12-3. 환경 취약도 지수 구간별 문화유산 분포
+# ============================================================
+
+with row2_left:
+
+    risk_distribution = result_df[
+        [
+            "heritage_name",
+            "risk_index",
+        ]
+    ].copy()
+
+    risk_distribution["risk_index"] = pd.to_numeric(
+        risk_distribution["risk_index"],
+        errors="coerce",
+    )
+
+    risk_distribution = risk_distribution.dropna(
+        subset=["risk_index"]
+    )
+
+    # 현재 데이터 분포를 보기 쉽도록
+    # 10점 단위로 구간 설정
+    risk_distribution["취약도 구간"] = pd.cut(
+        risk_distribution["risk_index"],
+
+        bins=[
+            -0.001,
+            10,
+            20,
+            30,
+            40,
+            50,
+            100,
+        ],
+
+        labels=[
+            "0~10",
+            "10~20",
+            "20~30",
+            "30~40",
+            "40~50",
+            "50 이상",
+        ],
+
+        include_lowest=True,
+        right=True,
+    )
+
+    risk_range_count = (
+        risk_distribution["취약도 구간"]
+        .value_counts(sort=False)
+        .rename_axis("취약도 구간")
+        .reset_index(
+            name="문화유산 수"
+        )
+    )
+
+    fig_risk_range = px.bar(
+        risk_range_count,
+
+        x="취약도 구간",
+        y="문화유산 수",
+
+        text="문화유산 수",
+
+        title="환경 취약도 지수 구간별 문화유산 분포",
+
+        labels={
+            "취약도 구간": "환경 취약도 지수",
+            "문화유산 수": "문화유산 수",
+        },
+    )
+
+    fig_risk_range.update_traces(
+        texttemplate="%{text}",
+        textposition="outside",
+        cliponaxis=False,
+
+        hovertemplate=(
+            "<b>취약도 지수 %{x}</b><br>"
+            "문화유산 수: %{y}개"
+            "<extra></extra>"
+        ),
+    )
+
+    fig_risk_range.update_layout(
+        height=470,
+
+        margin=dict(
+            t=70,
+            b=50,
+            l=20,
+            r=20,
+        ),
+
+        xaxis_title="환경 취약도 지수",
+        yaxis_title="문화유산 수",
+
+        showlegend=False,
+    )
+
+    fig_risk_range.update_yaxes(
+        rangemode="tozero"
+    )
+
+    st.plotly_chart(
+        fig_risk_range,
+        use_container_width=True,
+    )
+
+
+# ============================================================
+# 12-4. 재질 × 노출환경별 평균 환경 취약도 지수
+# ============================================================
+
+with row2_right:
+
     material_exposure_risk = (
         result_df
         .groupby(
-            ["material", "exposure"],
-            as_index=False
+            [
+                "material",
+                "exposure",
+            ],
+            as_index=False,
+            observed=True,
         )
         .agg(
-            평균_환경취약도=("risk_index", "mean"),
-            문화유산_수=("heritage_name", "count"),
+            평균_환경취약도=(
+                "risk_index",
+                "mean",
+            ),
+
+            문화유산_수=(
+                "heritage_name",
+                "count",
+            ),
         )
     )
 
+    # --------------------------------------------------------
     # 재질 순서 지정
+    # --------------------------------------------------------
+
     material_exposure_risk["material"] = pd.Categorical(
         material_exposure_risk["material"],
-        categories=MATERIAL_ORDER,
+        categories=material_order,
         ordered=True,
     )
 
+    # --------------------------------------------------------
     # 노출환경 순서 지정
-    exposure_order = [
-        "실외",
-        "반실외",
-        "실내",
-    ]
+    # --------------------------------------------------------
 
     material_exposure_risk["exposure"] = pd.Categorical(
         material_exposure_risk["exposure"],
@@ -2672,26 +2868,36 @@ with right_chart:
         ordered=True,
     )
 
-    # 재질 → 노출환경 순서로 정렬
     material_exposure_risk = (
         material_exposure_risk
         .sort_values(
-            ["material", "exposure"]
+            [
+                "material",
+                "exposure",
+            ]
         )
     )
 
-    # 그래프 생성
-    fig_material = px.bar(
+    # --------------------------------------------------------
+    # 그래프
+    # --------------------------------------------------------
+
+    fig_material_exposure = px.bar(
         material_exposure_risk,
+
         x="material",
         y="평균_환경취약도",
+
         color="exposure",
+
         barmode="group",
 
         text="평균_환경취약도",
 
+        color_discrete_map=exposure_color,
+
         category_orders={
-            "material": MATERIAL_ORDER,
+            "material": material_order,
             "exposure": exposure_order,
         },
 
@@ -2700,8 +2906,10 @@ with right_chart:
         labels={
             "material": "재질",
             "exposure": "노출환경",
-            "평균_환경취약도": "평균 환경 취약도 지수",
-            "문화유산_수": "문화유산 수",
+            "평균_환경취약도":
+                "평균 환경 취약도 지수",
+            "문화유산_수":
+                "문화유산 수",
         },
 
         hover_data={
@@ -2709,20 +2917,18 @@ with right_chart:
         },
     )
 
-    # 막대 위 평균값 표시
-    fig_material.update_traces(
+    fig_material_exposure.update_traces(
         texttemplate="%{text:.1f}",
         textposition="outside",
         cliponaxis=False,
     )
 
-    # 그래프 설정
-    fig_material.update_layout(
+    fig_material_exposure.update_layout(
         height=470,
 
         margin=dict(
             t=70,
-            b=30,
+            b=50,
             l=20,
             r=20,
         ),
@@ -2739,13 +2945,13 @@ with right_chart:
         ),
     )
 
-    # 환경 취약도 지수 범위
-    fig_material.update_yaxes(
+    # 취약도 지수 0~100으로 통일
+    fig_material_exposure.update_yaxes(
         range=[0, 100]
     )
 
     st.plotly_chart(
-        fig_material,
+        fig_material_exposure,
         use_container_width=True,
     )
     
