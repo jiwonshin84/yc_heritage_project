@@ -1251,476 +1251,141 @@ if df is not None:
     st.markdown("---")
     st.subheader("📊 학습 데이터 핵심 요약")
 
-
-    # ------------------------------------------------------------
-    # 공통 CSS
-    # ------------------------------------------------------------
-
+    # 카드 스타일
     st.markdown(
         """
-        <style>
-
-        /* 전체 카드 */
-        .summary-card {
-            height: 330px;
-            padding: 20px 22px;
-            border: 1px solid rgba(128, 128, 128, 0.20);
-            border-radius: 16px;
-            background: rgba(128, 128, 128, 0.035);
-            box-sizing: border-box;
-            overflow: hidden;
-        }
-
-        /* 카드 제목 */
-        .summary-title {
-            font-size: 18px;
-            font-weight: 700;
-            margin-bottom: 5px;
-            color: inherit;
-        }
-
-        /* 카드 설명 */
-        .summary-desc {
-            font-size: 12px;
-            opacity: 0.65;
-            margin-bottom: 15px;
-        }
-
-        /* --------------------------------------------------------
-           연도별 구성
-           -------------------------------------------------------- */
-
-        .year-row {
-            display: flex;
-            align-items: center;
-            margin-bottom: 9px;
-        }
-
-        .year-label {
-            width: 52px;
-            font-size: 13px;
-            font-weight: 600;
-        }
-
-        .year-bar-bg {
-            flex: 1;
-            height: 8px;
-            border-radius: 10px;
-            background: rgba(128,128,128,0.15);
-            overflow: hidden;
-        }
-
-        .year-bar {
-            height: 100%;
-            border-radius: 10px;
-            background: #4C78A8;
-        }
-
-        .year-value {
-            width: 55px;
-            text-align: right;
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-
-        /* --------------------------------------------------------
-           KPI
-           -------------------------------------------------------- */
-
-        .kpi-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-
-        .mini-kpi {
-            padding: 12px 10px;
-            border-radius: 12px;
-            background: rgba(128,128,128,0.07);
-            text-align: center;
-        }
-
-        .mini-kpi-label {
-            font-size: 11px;
-            opacity: 0.65;
-            margin-bottom: 4px;
-        }
-
-        .mini-kpi-value {
-            font-size: 19px;
-            font-weight: 700;
-        }
-
-        .mini-kpi-wide {
-            grid-column: span 2;
-        }
-
-
-        /* --------------------------------------------------------
-           Feature 태그
-           -------------------------------------------------------- */
-
-        .feature-wrap {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 7px;
-            align-content: flex-start;
-        }
-
-        .feature-tag {
-            display: inline-block;
-            padding: 6px 9px;
-            border-radius: 8px;
-            background: rgba(76,120,168,0.10);
-            border: 1px solid rgba(76,120,168,0.20);
-            font-size: 11px;
-            white-space: nowrap;
-        }
-
-        .feature-tag-missing {
-            display: inline-block;
-            padding: 6px 9px;
-            border-radius: 8px;
-            background: rgba(231,76,60,0.08);
-            border: 1px solid rgba(231,76,60,0.25);
-            font-size: 11px;
-            white-space: nowrap;
-        }
-
-        </style>
+<style>
+.summary-card {height:330px;padding:18px 20px;border:1px solid rgba(128,128,128,.20);border-radius:16px;background:rgba(128,128,128,.035);box-sizing:border-box;overflow:hidden;}
+.summary-title {font-size:18px;font-weight:700;margin-bottom:4px;}
+.summary-desc {font-size:12px;opacity:.65;margin-bottom:14px;}
+.year-row {display:flex;align-items:center;margin-bottom:9px;}
+.year-label {width:48px;font-size:13px;font-weight:600;}
+.year-bar-bg {flex:1;height:8px;border-radius:10px;background:rgba(128,128,128,.15);overflow:hidden;}
+.year-bar {height:100%;border-radius:10px;background:#4C78A8;}
+.year-value {width:52px;text-align:right;font-size:12px;font-weight:600;}
+.kpi-grid {display:grid;grid-template-columns:1fr 1fr;gap:9px;}
+.mini-kpi {padding:11px 8px;border-radius:12px;background:rgba(128,128,128,.07);text-align:center;}
+.mini-kpi-label {font-size:11px;opacity:.65;margin-bottom:3px;}
+.mini-kpi-value {font-size:19px;font-weight:700;}
+.mini-kpi-wide {grid-column:span 2;}
+.feature-wrap {display:flex;flex-wrap:wrap;gap:7px;align-content:flex-start;}
+.feature-tag,.feature-tag-missing {display:inline-block;padding:6px 9px;border-radius:8px;font-size:11px;white-space:nowrap;}
+.feature-tag {background:rgba(76,120,168,.10);border:1px solid rgba(76,120,168,.20);}
+.feature-tag-missing {background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.25);}
+</style>
         """,
         unsafe_allow_html=True,
     )
 
-
-    # ============================================================
     # 데이터 준비
-    # ============================================================
-
-    # ------------------------------------------------------------
-    # 연도별 데이터 건수
-    # ------------------------------------------------------------
-
-    year_counts = (
-        df["date"]
-        .dt.year
-        .value_counts()
-        .sort_index()
-    )
-
-    max_year_count = max(
-        int(year_counts.max()),
-        1,
-    )
-
-
-    # ------------------------------------------------------------
-    # 주요 파생변수
-    # ------------------------------------------------------------
+    year_counts = df["date"].dt.year.value_counts().sort_index()
+    max_year_count = max(int(year_counts.max()), 1)
 
     important_features = [
-        "temp_range",
-        "temp_change",
-        "humidity_change",
-        "humidity_std3",
-        "rainfall_7d",
-        "rh60_days_28",
-        "rh75_days_28",
-        "rh75_consecutive_days",
-        "wood_mold_days_28",
-        "rh70_days_28",
-        "rh70_consecutive_days",
-        "metal_so2_humidity",
-        "pm_total",
-        "pm_load_7d",
-        "so2_ma7",
-        "no2_ma7",
-        "o3_ma7",
+        "temp_range", "temp_change", "humidity_change", "humidity_std3",
+        "rainfall_7d", "rh60_days_28", "rh75_days_28",
+        "rh75_consecutive_days", "wood_mold_days_28", "rh70_days_28",
+        "rh70_consecutive_days", "metal_so2_humidity", "pm_total",
+        "pm_load_7d", "so2_ma7", "no2_ma7", "o3_ma7",
     ]
 
-
-    # 화면 표시용 한글 이름
     feature_names = {
-
-        "temp_range":
-            "일교차",
-
-        "temp_change":
-            "기온 변화",
-
-        "humidity_change":
-            "습도 변화",
-
-        "humidity_std3":
-            "3일 습도 변동",
-
-        "rainfall_7d":
-            "7일 누적 강수",
-
-        "rh60_days_28":
-            "28일 RH>60%",
-
-        "rh75_days_28":
-            "28일 RH≥75%",
-
-        "rh75_consecutive_days":
-            "RH≥75% 연속",
-
-        "wood_mold_days_28":
-            "목조 곰팡이",
-
-        "rh70_days_28":
-            "28일 RH≥70%",
-
-        "rh70_consecutive_days":
-            "RH≥70% 연속",
-
-        "metal_so2_humidity":
-            "금속 고습·SO₂",
-
-        "pm_total":
-            "PM 통합",
-
-        "pm_load_7d":
-            "7일 미세먼지",
-
-        "so2_ma7":
-            "SO₂ 7일 평균",
-
-        "no2_ma7":
-            "NO₂ 7일 평균",
-
-        "o3_ma7":
-            "O₃ 7일 평균",
+        "temp_range": "일교차",
+        "temp_change": "기온 변화",
+        "humidity_change": "습도 변화",
+        "humidity_std3": "3일 습도 변동",
+        "rainfall_7d": "7일 누적 강수",
+        "rh60_days_28": "28일 RH>60%",
+        "rh75_days_28": "28일 RH≥75%",
+        "rh75_consecutive_days": "RH≥75% 연속",
+        "wood_mold_days_28": "목조 곰팡이",
+        "rh70_days_28": "28일 RH≥70%",
+        "rh70_consecutive_days": "RH≥70% 연속",
+        "metal_so2_humidity": "금속 고습·SO₂",
+        "pm_total": "PM 통합",
+        "pm_load_7d": "7일 미세먼지",
+        "so2_ma7": "SO₂ 7일 평균",
+        "no2_ma7": "NO₂ 7일 평균",
+        "o3_ma7": "O₃ 7일 평균",
     }
-
-
-    # ============================================================
-    # 3개 카드 한 행 배치
-    # ============================================================
 
     summary_col1, summary_col2, summary_col3 = st.columns(
         [1, 1, 1.35],
         gap="medium",
     )
 
-
-    # ============================================================
-    # 카드 1
-    # 학습 데이터 연도별 구성
-    # ============================================================
-
+    # 카드 1: 학습 데이터 연도별 구성
     with summary_col1:
-
-        year_html = ""
-
+        year_rows = []
         for year, count in year_counts.items():
-
-            width = (
-                float(count)
-                / max_year_count
-                * 100
+            width = float(count) / max_year_count * 100
+            year_rows.append(
+                f'<div class="year-row"><div class="year-label">{int(year)}</div>'
+                f'<div class="year-bar-bg"><div class="year-bar" style="width:{width:.1f}%"></div></div>'
+                f'<div class="year-value">{int(count):,}일</div></div>'
             )
-
-            year_html += f"""
-            <div class="year-row">
-
-                <div class="year-label">
-                    {int(year)}
-                </div>
-
-                <div class="year-bar-bg">
-                    <div
-                        class="year-bar"
-                        style="width:{width:.1f}%;">
-                    </div>
-                </div>
-
-                <div class="year-value">
-                    {int(count):,}일
-                </div>
-
-            </div>
-            """
-
-        st.markdown(
-            f"""
-            <div class="summary-card">
-
-                <div class="summary-title">
-                    📅 학습 데이터 연도별 구성
-                </div>
-
-                <div class="summary-desc">
-                    2019~2024 학습·검증 / 2025 최종 테스트
-                </div>
-
-                {year_html}
-
-            </div>
-            """,
-            unsafe_allow_html=True,
+        year_html = "".join(year_rows)
+        card1_html = (
+            '<div class="summary-card">'
+            '<div class="summary-title">📅 학습 데이터 연도별 구성</div>'
+            '<div class="summary-desc">2019~2024 학습·검증 / 2025 최종 테스트</div>'
+            f'{year_html}'
+            '</div>'
         )
+        st.markdown(card1_html, unsafe_allow_html=True)
 
-
-    # ============================================================
-    # 카드 2
-    # 수집 데이터 주요 요약 지표
-    # ============================================================
-
+    # 카드 2: 수집 데이터 주요 요약
     with summary_col2:
-
         total_days = len(df)
+        avg_temp = df["temp_avg"].mean()
+        avg_humidity = df["humidity"].mean()
+        avg_pm10 = df["pm10"].mean()
+        avg_pm25 = df["pm25"].mean()
 
-        avg_temp = (
-            df["temp_avg"].mean()
+        card2_html = (
+            '<div class="summary-card">'
+            '<div class="summary-title">📌 수집 데이터 주요 요약</div>'
+            '<div class="summary-desc">전체 학습기간 환경 데이터</div>'
+            '<div class="kpi-grid">'
+            '<div class="mini-kpi mini-kpi-wide"><div class="mini-kpi-label">총 관측 일수</div>'
+            f'<div class="mini-kpi-value">{total_days:,}일</div></div>'
+            '<div class="mini-kpi"><div class="mini-kpi-label">평균 기온</div>'
+            f'<div class="mini-kpi-value">{avg_temp:.1f}℃</div></div>'
+            '<div class="mini-kpi"><div class="mini-kpi-label">평균 습도</div>'
+            f'<div class="mini-kpi-value">{avg_humidity:.1f}%</div></div>'
+            '<div class="mini-kpi"><div class="mini-kpi-label">평균 PM10</div>'
+            f'<div class="mini-kpi-value">{avg_pm10:.1f}</div></div>'
+            '<div class="mini-kpi"><div class="mini-kpi-label">평균 PM2.5</div>'
+            f'<div class="mini-kpi-value">{avg_pm25:.1f}</div></div>'
+            '</div></div>'
         )
+        st.markdown(card2_html, unsafe_allow_html=True)
 
-        avg_humidity = (
-            df["humidity"].mean()
-        )
-
-        avg_pm10 = (
-            df["pm10"].mean()
-        )
-
-        avg_pm25 = (
-            df["pm25"].mean()
-        )
-
-        st.markdown(
-            f"""
-            <div class="summary-card">
-
-                <div class="summary-title">
-                    📌 수집 데이터 주요 요약
-                </div>
-
-                <div class="summary-desc">
-                    전체 학습기간 환경 데이터
-                </div>
-
-                <div class="kpi-grid">
-
-                    <div class="mini-kpi mini-kpi-wide">
-                        <div class="mini-kpi-label">
-                            총 관측 일수
-                        </div>
-
-                        <div class="mini-kpi-value">
-                            {total_days:,}일
-                        </div>
-                    </div>
-
-
-                    <div class="mini-kpi">
-                        <div class="mini-kpi-label">
-                            평균 기온
-                        </div>
-
-                        <div class="mini-kpi-value">
-                            {avg_temp:.1f}℃
-                        </div>
-                    </div>
-
-
-                    <div class="mini-kpi">
-                        <div class="mini-kpi-label">
-                            평균 습도
-                        </div>
-
-                        <div class="mini-kpi-value">
-                            {avg_humidity:.1f}%
-                        </div>
-                    </div>
-
-
-                    <div class="mini-kpi">
-                        <div class="mini-kpi-label">
-                            평균 PM10
-                        </div>
-
-                        <div class="mini-kpi-value">
-                            {avg_pm10:.1f}
-                        </div>
-                    </div>
-
-
-                    <div class="mini-kpi">
-                        <div class="mini-kpi-label">
-                            평균 PM2.5
-                        </div>
-
-                        <div class="mini-kpi-value">
-                            {avg_pm25:.1f}
-                        </div>
-                    </div>
-
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-
-    # ============================================================
-    # 카드 3
-    # 모델 학습용 주요 파생변수
-    # ============================================================
-
+    # 카드 3: 모델 학습용 주요 파생변수
     with summary_col3:
-
-        feature_html = ""
-
+        feature_tags = []
         available_count = 0
-
         for feature in important_features:
-
-            display_name = feature_names.get(
-                feature,
-                feature,
-            )
-
+            display_name = feature_names.get(feature, feature)
             if feature in df.columns:
-
                 available_count += 1
-
-                feature_html += f"""
-                <span class="feature-tag">
-                    ✓ {display_name}
-                </span>
-                """
-
+                feature_tags.append(
+                    f'<span class="feature-tag">✓ {display_name}</span>'
+                )
             else:
+                feature_tags.append(
+                    f'<span class="feature-tag-missing">✕ {display_name}</span>'
+                )
 
-                feature_html += f"""
-                <span class="feature-tag-missing">
-                    ✕ {display_name}
-                </span>
-                """
-
-        st.markdown(
-            f"""
-            <div class="summary-card">
-
-                <div class="summary-title">
-                    🧮 모델 학습용 주요 파생변수
-                </div>
-
-                <div class="summary-desc">
-                    생성 확인 {available_count}/{len(important_features)}개
-                </div>
-
-                <div class="feature-wrap">
-                    {feature_html}
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True,
+        feature_html = "".join(feature_tags)
+        card3_html = (
+            '<div class="summary-card">'
+            '<div class="summary-title">🧮 모델 학습용 주요 파생변수</div>'
+            f'<div class="summary-desc">생성 확인 {available_count}/{len(important_features)}개</div>'
+            f'<div class="feature-wrap">{feature_html}</div>'
+            '</div>'
         )
+        st.markdown(card3_html, unsafe_allow_html=True)
 
 
     # ============================================================
