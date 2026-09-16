@@ -2468,19 +2468,23 @@ else:
     )
 
 
+
 # ============================================================
-# 12. 메인 시각화
+# 12. 한눈에 보는 예측 결과
 # ============================================================
 
 st.markdown("---")
 st.subheader("🎨 한눈에 보는 예측 결과")
 
+# 두 그래프를 동일한 크기의 1행 2열로 배치
 left_chart, right_chart = st.columns(
-    [0.9, 1.3]
+    [1, 1],
+    gap="large",
 )
 
+
 # ------------------------------------------------------------
-# 11-1. 등급 분포 Donut
+# 12-1. 안전·주의·위험 등급 분포 Donut
 # ------------------------------------------------------------
 
 with left_chart:
@@ -2516,12 +2520,17 @@ with left_chart:
         hovertemplate=(
             "<b>%{label}</b><br>"
             "문화유산 %{value}개<br>"
-            "%{percent}<extra></extra>"
+            "%{percent}"
+            "<extra></extra>"
         ),
     )
 
+    # 도넛 중앙에 전체 문화유산 수 표시
     fig_grade.add_annotation(
-        text=f"<b>{total_count}</b><br>문화유산",
+        text=(
+            f"<b>{total_count}</b>"
+            "<br>문화유산"
+        ),
         x=0.5,
         y=0.5,
         showarrow=False,
@@ -2534,13 +2543,15 @@ with left_chart:
         height=470,
         margin=dict(
             t=70,
-            b=20,
+            b=30,
             l=20,
             r=20,
         ),
         legend=dict(
             orientation="h",
             y=-0.08,
+            x=0.5,
+            xanchor="center",
         ),
     )
 
@@ -2551,88 +2562,10 @@ with left_chart:
 
 
 # ------------------------------------------------------------
-# 11-2. 관심도 TOP 15
+# 12-2. 재질별 안전·주의·위험 분포
 # ------------------------------------------------------------
 
 with right_chart:
-
-    top_n = min(
-        15,
-        len(result_df),
-    )
-
-    top_attention = (
-        result_df
-        .nlargest(
-            top_n,
-            "risk_index",
-        )
-        .sort_values(
-            "risk_index",
-            ascending=True,
-        )
-        .copy()
-    )
-
-    fig_top = px.bar(
-        top_attention,
-        x="risk_index",
-        y="heritage_name",
-        orientation="h",
-        color="predicted_grade",
-        color_discrete_map=GRADE_COLOR,
-        text="risk_index",
-        title=f"환경 취약도 관심순위 TOP {top_n}",
-        labels={
-            "risk_index": "환경 취약도 지수",
-            "heritage_name": "",
-            "predicted_grade": "예측 등급",
-        },
-    )
-
-    fig_top.update_traces(
-        texttemplate="%{text:.1f}",
-        textposition="outside",
-        cliponaxis=False,
-        hovertemplate=(
-            "<b>%{y}</b><br>"
-            "환경 취약도 지수 %{x:.1f}<extra></extra>"
-        ),
-    )
-
-    fig_top.update_layout(
-        height=470,
-        xaxis_range=[0, 105],
-        margin=dict(
-            t=70,
-            b=30,
-            l=20,
-            r=40,
-        ),
-    )
-
-    st.plotly_chart(
-        fig_top,
-        use_container_width=True,
-    )
-
-
-# ============================================================
-# 13. 재질별 / 노출환경별 분석
-# ============================================================
-
-st.markdown("---")
-st.subheader("🏛️ 재질·노출환경별 취약도 비교")
-
-material_col, exposure_col = st.columns(
-    2
-)
-
-# ------------------------------------------------------------
-# 12-1. 재질별 등급
-# ------------------------------------------------------------
-
-with material_col:
 
     material_summary = (
         result_df
@@ -2663,74 +2596,41 @@ with material_col:
         labels={
             "material": "재질",
             "predicted_grade": "예측 등급",
+            "문화유산 수": "문화유산 수",
         },
     )
 
+    fig_material.update_traces(
+        hovertemplate=(
+            "<b>%{x}</b><br>"
+            "문화유산 %{y}개"
+            "<extra></extra>"
+        ),
+    )
+
     fig_material.update_layout(
-        height=420,
-        legend_title_text="예측 등급",
+        height=470,
+        margin=dict(
+            t=70,
+            b=30,
+            l=20,
+            r=20,
+        ),
+        legend=dict(
+            title_text="예측 등급",
+            orientation="h",
+            y=-0.08,
+            x=0.5,
+            xanchor="center",
+        ),
+        xaxis_title="재질",
+        yaxis_title="문화유산 수",
     )
 
     st.plotly_chart(
         fig_material,
         use_container_width=True,
     )
-
-
-# ------------------------------------------------------------
-# 12-2. 노출환경별 평균 취약도
-# ------------------------------------------------------------
-
-with exposure_col:
-
-    exposure_summary = (
-        result_df
-        .groupby(
-            "exposure",
-            as_index=False,
-        )
-        .agg(
-            평균_취약도=(
-                "risk_index",
-                "mean",
-            ),
-            문화유산_수=(
-                "heritage_name",
-                "count",
-            ),
-        )
-    )
-
-    fig_exposure = px.bar(
-        exposure_summary,
-        x="exposure",
-        y="평균_취약도",
-        text="평균_취약도",
-        category_orders={
-            "exposure": EXPOSURE_ORDER,
-        },
-        title="노출환경별 평균 환경 취약도",
-        labels={
-            "exposure": "노출환경",
-            "평균_취약도": "평균 환경 취약도 지수",
-        },
-    )
-
-    fig_exposure.update_traces(
-        texttemplate="%{text:.1f}",
-        textposition="outside",
-    )
-
-    fig_exposure.update_layout(
-        height=420,
-        yaxis_range=[0, 100],
-    )
-
-    st.plotly_chart(
-        fig_exposure,
-        use_container_width=True,
-    )
-
 
 # ============================================================
 # 14. 지도 시각화
@@ -2753,17 +2653,19 @@ if (
         st.markdown("---")
         st.subheader("🗺️ 문화유산 환경 취약도 공간 분포")
 
-        map_df[
-            "표시크기"
-        ] = (
-            map_df[
-                "risk_index"
-            ]
+        map_df["표시크기"] = (
+            map_df["risk_index"]
             .clip(
                 lower=5,
                 upper=100,
             )
         )
+
+        # ----------------------------------------------------
+        # 영천시 중심 좌표
+        # ----------------------------------------------------
+        YEONGCHEON_CENTER_LAT = 35.9733
+        YEONGCHEON_CENTER_LON = 128.9385
 
         fig_map = px.scatter_map(
             map_df,
@@ -2773,6 +2675,7 @@ if (
             size="표시크기",
             color_discrete_map=GRADE_COLOR,
             hover_name="heritage_name",
+
             hover_data={
                 "material": True,
                 "exposure": True,
@@ -2782,8 +2685,18 @@ if (
                 "longitude": False,
                 "표시크기": False,
             },
-            zoom=9,
+
+            # 영천시 중심으로 지도 시작
+            center={
+                "lat": YEONGCHEON_CENTER_LAT,
+                "lon": YEONGCHEON_CENTER_LON,
+            },
+
+            # 영천시 전체가 적당히 보이는 확대 수준
+            zoom=10,
+
             height=600,
+
             labels={
                 "material": "재질",
                 "exposure": "노출환경",
@@ -2795,12 +2708,21 @@ if (
 
         fig_map.update_layout(
             map_style="open-street-map",
+
+            # 처음 열었을 때 영천 중심과 확대 수준 고정
+            map_center={
+                "lat": YEONGCHEON_CENTER_LAT,
+                "lon": YEONGCHEON_CENTER_LON,
+            },
+            map_zoom=10,
+
             margin=dict(
                 t=10,
                 b=10,
                 l=10,
                 r=10,
             ),
+
             legend=dict(
                 orientation="h",
                 y=1.02,
@@ -2811,7 +2733,6 @@ if (
             fig_map,
             use_container_width=True,
         )
-
 
 # ============================================================
 # 15. 문화유산별 상세 결과
