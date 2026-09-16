@@ -2632,6 +2632,123 @@ with right_chart:
         use_container_width=True,
     )
 
+
+# ------------------------------------------------------------
+# 12-2. 재질 × 노출환경별 평균 환경 취약도 지수
+# ------------------------------------------------------------
+
+with right_chart:
+
+    # 재질 × 노출환경별 평균 환경 취약도 지수 계산
+    material_exposure_risk = (
+        result_df
+        .groupby(
+            ["material", "exposure"],
+            as_index=False
+        )
+        .agg(
+            평균_환경취약도=("risk_index", "mean"),
+            문화유산_수=("heritage_name", "count"),
+        )
+    )
+
+    # 재질 순서 지정
+    material_exposure_risk["material"] = pd.Categorical(
+        material_exposure_risk["material"],
+        categories=MATERIAL_ORDER,
+        ordered=True,
+    )
+
+    # 노출환경 순서 지정
+    exposure_order = [
+        "실외",
+        "반실외",
+        "실내",
+    ]
+
+    material_exposure_risk["exposure"] = pd.Categorical(
+        material_exposure_risk["exposure"],
+        categories=exposure_order,
+        ordered=True,
+    )
+
+    # 재질 → 노출환경 순서로 정렬
+    material_exposure_risk = (
+        material_exposure_risk
+        .sort_values(
+            ["material", "exposure"]
+        )
+    )
+
+    # 그래프 생성
+    fig_material = px.bar(
+        material_exposure_risk,
+        x="material",
+        y="평균_환경취약도",
+        color="exposure",
+        barmode="group",
+
+        text="평균_환경취약도",
+
+        category_orders={
+            "material": MATERIAL_ORDER,
+            "exposure": exposure_order,
+        },
+
+        title="재질·노출환경별 평균 환경 취약도 지수",
+
+        labels={
+            "material": "재질",
+            "exposure": "노출환경",
+            "평균_환경취약도": "평균 환경 취약도 지수",
+            "문화유산_수": "문화유산 수",
+        },
+
+        hover_data={
+            "문화유산_수": True,
+        },
+    )
+
+    # 막대 위 평균값 표시
+    fig_material.update_traces(
+        texttemplate="%{text:.1f}",
+        textposition="outside",
+        cliponaxis=False,
+    )
+
+    # 그래프 설정
+    fig_material.update_layout(
+        height=470,
+
+        margin=dict(
+            t=70,
+            b=30,
+            l=20,
+            r=20,
+        ),
+
+        xaxis_title="재질",
+        yaxis_title="평균 환경 취약도 지수",
+
+        legend=dict(
+            title_text="노출환경",
+            orientation="h",
+            y=-0.12,
+            x=0.5,
+            xanchor="center",
+        ),
+    )
+
+    # 환경 취약도 지수 범위
+    fig_material.update_yaxes(
+        range=[0, 100]
+    )
+
+    st.plotly_chart(
+        fig_material,
+        use_container_width=True,
+    )
+    
 # ============================================================
 # 14. 지도 시각화
 # ============================================================
