@@ -658,27 +658,26 @@ c5.metric(
     metric_text(final_danger_recall),
 )
 
-training_period = metadata.get(
-    "training_period",
-    "2019-01-01~2024-12-31",
-)
-test_period = metadata.get(
-    "final_test_period",
-    "2025-01-01~2025-12-31",
-)
-validation_text = metadata.get(
-    "validation",
-    "Expanding-Window 2020~2024",
-)
+training_period = metadata.get("training_period", "-").replace("~", " → ")
+final_test_period = metadata.get("final_test_period", "-").replace("~", " → ")
+validation = metadata.get("validation", "-").replace("~", "–")
 
-training_period = metadata.get("training_period", "-")
-final_test_period = metadata.get("final_test_period", "-")
-validation = metadata.get("validation", "-")
-
-st.text(
-    f"학습기간: {training_period} · "
-    f"최종 테스트: {final_test_period} · "
-    f"검증: {validation}"
+st.markdown(
+    f"""
+    <div style="
+        color: #808495;
+        font-size: 0.88rem;
+        margin-top: 6px;
+        margin-bottom: 4px;
+    ">
+        학습기간: {training_period}
+        &nbsp;·&nbsp;
+        최종 테스트: {final_test_period}
+        &nbsp;·&nbsp;
+        검증: {validation}
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 
