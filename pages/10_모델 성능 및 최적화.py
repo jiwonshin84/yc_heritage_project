@@ -676,8 +676,8 @@ final_test_period = metadata.get("final_test_period", "-").replace("~", " ~ ")
 
 st.caption(
     f"학습기간: {training_period} · "
-    f"최종 테스트: {test_period} · "
-    f"검증: {validation_text}"
+    f"최종 테스트: {final_test_period} · "
+    f"검증: {metadata.get('validation', '-')}"
 )
 
 
