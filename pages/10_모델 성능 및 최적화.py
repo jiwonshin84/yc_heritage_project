@@ -883,6 +883,7 @@ if year_col is not None:
         xaxis_title="검증연도",
         yaxis_title=selected_fold_metric_label,
         yaxis_range=[0, 1],
+        xaxis=dict(dtick=1, tickformat="d"),
     )
 
     st.plotly_chart(
