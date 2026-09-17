@@ -671,11 +671,11 @@ validation_text = metadata.get(
     "Expanding-Window 2020~2024",
 )
 
-training_period = metadata.get("training_period", "-").replace("~", " → ")
-final_test_period = metadata.get("final_test_period", "-").replace("~", " → ")
-validation = metadata.get("validation", "-").replace("~", "–")
+training_period = metadata.get("training_period", "-")
+final_test_period = metadata.get("final_test_period", "-")
+validation = metadata.get("validation", "-")
 
-st.caption(
+st.text(
     f"학습기간: {training_period} · "
     f"최종 테스트: {final_test_period} · "
     f"검증: {validation}"
