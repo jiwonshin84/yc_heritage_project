@@ -21,15 +21,16 @@ from utils.feature_engineering import create_environment_features
 # ============================================================
 
 st.set_page_config(
-    page_title="영천 2026 날짜별 환경 위험도 테스트",
+    page_title="영천 2026년 미학습 기간 환경 취약도 예측",
     page_icon="🧪",
     layout="wide",
 )
 
-st.title("🧪 영천 지역 2026 날짜별 환경 위험도 테스트")
+st.title("🧪 영천 지역 2026년 미학습 기간 환경 취약도 예측")
 st.caption(
-    "2026-01-01부터 현재 확보 가능한 최신 일자료까지 영천의 기상·대기환경 데이터를 수집하고, "
-    "학습과 동일한 파생변수를 생성한 뒤 저장된 최고 학습 모델로 날짜별 환경 취약도를 예측합니다."
+    "2025년까지의 자료로 구축한 모델을 학습에 사용하지 않은 2026년 환경자료에 적용하여 "
+    "날짜별 환경 취약도를 예측합니다. 실제 예측 기간은 ASOS와 AirKorea에서 실제 확보된 "
+    "공공데이터의 공통 가용기간을 기준으로 자동 결정됩니다."
 )
 
 st.info(
@@ -1232,7 +1233,7 @@ try:
     )
 
     run = st.button(
-        "🚀 2026년 전체 수집 · 파생변수 생성 · 날짜별 위험도 예측",
+        "🚀 2026년 공공데이터 수집 · 파생변수 생성 · 환경 취약도 예측",
         type="primary",
         use_container_width=True,
     )
@@ -1276,6 +1277,14 @@ try:
             actual_end_date,
         )
 
+        air_min_date = pd.to_datetime(air["date"]).min()
+        air_max_date = pd.to_datetime(air["date"]).max()
+
+        st.caption(
+            f"🌫 AirKorea 실제 수집 범위({used_station}): "
+            f"{air_min_date:%Y-%m-%d} → {air_max_date:%Y-%m-%d}"
+        )
+
         if failed_air_dates:
             st.warning(
                 f"⚠️ AirKorea 서버 오류 등으로 "
@@ -1291,6 +1300,41 @@ try:
         progress.progress(55, text="기상·대기자료 결합 및 파생변수 생성 중...")
 
         environment_df = prepare_environment(weather, air)
+
+        env_min_date = pd.to_datetime(environment_df["date"]).min()
+        env_max_date = pd.to_datetime(environment_df["date"]).max()
+
+        prediction_env = environment_df.loc[
+            environment_df["date"] >= pd.Timestamp(DISPLAY_START_DATE)
+        ].copy()
+
+        if prediction_env.empty:
+            raise ValueError(
+                "2026-01-01 이후 ASOS와 AirKorea가 함께 확보된 예측 가능 기간이 없습니다."
+            )
+
+        actual_prediction_start = pd.to_datetime(prediction_env["date"]).min()
+        actual_prediction_end = pd.to_datetime(prediction_env["date"]).max()
+        actual_prediction_days = int(prediction_env["date"].nunique())
+
+        st.info(
+            "📅 공공데이터 실제 가용기간\n\n"
+            f"- ASOS: {pd.to_datetime(weather['date']).min():%Y-%m-%d} → "
+            f"{pd.to_datetime(weather['date']).max():%Y-%m-%d}\n"
+            f"- AirKorea({used_station}): {air_min_date:%Y-%m-%d} → {air_max_date:%Y-%m-%d}\n"
+            f"- 기상·대기 결합 후 사용 가능기간: {env_min_date:%Y-%m-%d} → {env_max_date:%Y-%m-%d}\n"
+            f"- **최종 예측 가능기간: {actual_prediction_start:%Y-%m-%d} → "
+            f"{actual_prediction_end:%Y-%m-%d} ({actual_prediction_days:,}일)**"
+        )
+
+        if actual_prediction_start.date() > DISPLAY_START_DATE:
+            st.warning(
+                f"⚠️ 2026-01-01부터 {actual_prediction_start:%Y-%m-%d} 직전까지는 "
+                "예측에 필요한 기상·대기환경 공공데이터의 공통 가용기간에 포함되지 않아 "
+                "이번 분석에서 제외됩니다. 미래 시점의 값으로 과거 결측을 채우지 않고, "
+                "실제로 확보된 공통 기간만 예측에 사용합니다."
+            )
+
         progress.progress(75, text="최고 학습 모델로 날짜별 예측 중...")
 
         all_predictions, daily = predict_all_dates(
@@ -1315,18 +1359,25 @@ try:
     if isinstance(daily, pd.DataFrame) and not daily.empty:
         latest = daily.iloc[-1]
 
+        actual_start = pd.to_datetime(daily["date"]).min()
+        actual_end = pd.to_datetime(daily["date"]).max()
+
         st.success(
-            f"예측 완료 · 실제 최신 예측일: {latest['date']:%Y-%m-%d} · "
-            f"대표 위험도: {latest['daily_grade']}"
+            f"예측 완료 · 실제 예측기간: {actual_start:%Y-%m-%d} → "
+            f"{actual_end:%Y-%m-%d} · 최신 대표 등급: {latest['daily_grade']}"
         )
 
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("예측 일수", f"{len(daily):,}일")
-        m2.metric("최신 대표 등급", latest["daily_grade"])
-        m3.metric("최신 위험 문화유산", f"{int(latest['danger_count']):,}개")
-        m4.metric("최신 최대 위험지수", f"{latest['max_risk_index']:.1f}")
+        p1, p2, p3 = st.columns(3)
+        p1.metric("실제 예측 시작일", f"{actual_start:%Y-%m-%d}")
+        p2.metric("실제 예측 종료일", f"{actual_end:%Y-%m-%d}")
+        p3.metric("예측 일수", f"{len(daily):,}일")
 
-        st.subheader("📈 2026 날짜별 대표 위험도")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("최신 대표 등급", latest["daily_grade"])
+        m2.metric("최신 위험 문화유산", f"{int(latest['danger_count']):,}개")
+        m3.metric("최신 최대 위험지수", f"{latest['max_risk_index']:.1f}")
+
+        st.subheader("📈 2026 날짜별 대표 환경 취약도")
 
         chart_df = daily.copy()
         chart_df["등급값"] = chart_df["daily_grade"].map({"안전": 0, "주의": 1, "위험": 2})
@@ -1389,7 +1440,7 @@ try:
         fig2.update_layout(height=420)
         st.plotly_chart(fig2, use_container_width=True)
 
-        st.subheader("📋 날짜별 위험도 표")
+        st.subheader("📋 날짜별 환경 취약도 표")
 
         display_daily = daily.copy()
         display_daily["date"] = display_daily["date"].dt.strftime("%Y-%m-%d")
@@ -1467,5 +1518,5 @@ try:
             )
 
 except Exception as e:
-    st.error(f"❌ 테스트 페이지 초기화 실패: {e}")
+    st.error(f"❌ 2026년 미학습 기간 예측 페이지 실행 실패: {e}")
     st.exception(e)
