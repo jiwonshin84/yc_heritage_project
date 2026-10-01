@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import gc
 import json
 
 from github import Github
@@ -176,16 +175,8 @@ def upload_file_to_github(
         content = local_path.read_bytes()
         message = f"model: update {local_path.name}"
 
-        # 존재 여부 확인과 실제 update 오류를 분리한다.
-        # update 실패를 create로 오인해 422가 발생하는 것을 방지한다.
         try:
-            old = repo.get_contents(git_path, ref="main")
-            file_exists = True
-        except Exception:
-            old = None
-            file_exists = False
-
-        if file_exists:
+            old = repo.get_contents(git_path)
             repo.update_file(
                 path=git_path,
                 message=message,
@@ -193,7 +184,7 @@ def upload_file_to_github(
                 sha=old.sha,
                 branch="main",
             )
-        else:
+        except Exception:
             repo.create_file(
                 path=git_path,
                 message=message,
@@ -682,48 +673,31 @@ def prepare_ml_dataset(
 # 7. 후보 모델
 # ============================================================
 
-MODEL_NAMES = [
-    "Random Forest",
-    "Extra Trees",
-    "Gradient Boosting",
-]
-
-
-def create_model(model_name: str):
-    """
-    모델을 한 번에 하나만 생성한다.
-
-    Streamlit Cloud에서 세 모델 객체를 동시에 메모리에 보관하면
-    학습 도중 메모리 사용량이 커질 수 있으므로, 각 Fold에서
-    필요한 모델만 생성하고 평가 후 즉시 해제한다.
-    """
-    if model_name == "Random Forest":
-        return RandomForestClassifier(
+def create_models() -> dict:
+    return {
+        "Random Forest": RandomForestClassifier(
             n_estimators=300,
             max_depth=15,
             min_samples_leaf=2,
             random_state=42,
-            n_jobs=2,
-        )
+            n_jobs=-1,
+        ),
 
-    if model_name == "Extra Trees":
-        return ExtraTreesClassifier(
+        "Extra Trees": ExtraTreesClassifier(
             n_estimators=300,
             max_depth=15,
             min_samples_leaf=2,
             random_state=42,
-            n_jobs=2,
-        )
+            n_jobs=-1,
+        ),
 
-    if model_name == "Gradient Boosting":
-        return GradientBoostingClassifier(
+        "Gradient Boosting": GradientBoostingClassifier(
             n_estimators=150,
             learning_rate=0.05,
             max_depth=3,
             random_state=42,
-        )
-
-    raise ValueError(f"알 수 없는 모델입니다: {model_name}")
+        ),
+    }
 
 
 # ============================================================
@@ -741,8 +715,7 @@ def run_training(
     fold_confusions = {}
 
     progress = st.progress(0)
-    total_runs = len(validation_years) * len(MODEL_NAMES)
-    progress_text = st.empty()
+    total_runs = len(validation_years) * len(create_models())
     run_no = 0
 
     for fold_no, val_year in enumerate(
@@ -796,15 +769,7 @@ def run_training(
             y=y_train,
         )
 
-        for model_name in MODEL_NAMES:
-            progress_text.info(
-                f"🤖 Fold {fold_no}/5 · {val_year}년 검증 · "
-                f"{model_name} 학습 중... "
-                f"({run_no + 1}/{total_runs})"
-            )
-
-            model = create_model(model_name)
-
+        for model_name, model in create_models().items():
             model.fit(
                 X_train,
                 y_train,
@@ -904,14 +869,6 @@ def run_training(
             progress.progress(
                 run_no / total_runs
             )
-
-            # 다음 모델 학습 전에 메모리 즉시 회수
-            del model
-            gc.collect()
-
-    progress_text.success(
-        "✅ Expanding-Window 15회 학습·검증 완료"
-    )
 
     fold_results_df = pd.DataFrame(
         fold_results
@@ -1066,12 +1023,9 @@ def run_training(
         y=y_final_train,
     )
 
-    progress_text.info(
-        f"🏁 최종 선택 모델 {best_model_name}을(를) "
-        "2019~2024 전체 데이터로 다시 학습 중..."
-    )
-
-    best_model = create_model(best_model_name)
+    best_model = create_models()[
+        best_model_name
+    ]
 
     best_model.fit(
         X_final_train,
@@ -1355,9 +1309,6 @@ if "risk_target_dataset" not in st.session_state:
 if "risk_dataset_ml" not in st.session_state:
     st.session_state.risk_dataset_ml = None
 
-if "risk_upload_targets" not in st.session_state:
-    st.session_state.risk_upload_targets = None
-
 
 # ============================================================
 # 11. 실행 영역
@@ -1401,12 +1352,6 @@ with col_btn2:
             "✅ 모델 학습 결과가 준비되어 있습니다."
         )
 
-
-st.caption(
-    "※ 학습 중에는 GitHub 자동 업로드를 하지 않습니다. "
-    "연결된 저장소에 커밋하면 Streamlit Cloud가 앱을 재배포하여 "
-    "진행 중인 학습이 중단될 수 있기 때문입니다."
-)
 
 if train_clicked:
 
@@ -1500,10 +1445,10 @@ if train_clicked:
             f"({len(dataset):,}건)"
         )
 
-        # 중요: 학습 도중 GitHub에 파일을 업로드하지 않습니다.
-        # Streamlit Community Cloud가 연결된 GitHub 저장소의 변경을 감지하면
-        # 앱을 재배포/재시작할 수 있어 현재 학습 프로세스가 중단될 수 있습니다.
-        # Target 데이터는 우선 현재 실행 환경의 로컬 파일로만 저장합니다.
+        upload_file_to_github(
+            TARGET_DATA_PATH,
+            "data/processed/[2019_2025] heritage_target_dataset.csv",
+        )
 
         status.update(
             label="🧩 머신러닝 Feature 구성 및 Leakage 검사 중...",
@@ -1570,13 +1515,13 @@ if train_clicked:
             ),
         ]
 
-        # GitHub 업로드 대상만 세션에 기록합니다.
-        # 자동 업로드는 하지 않습니다. GitHub 커밋이 Streamlit Cloud의
-        # 재배포를 유발하여 실행 중인 Python 프로세스를 종료할 수 있기 때문입니다.
-        st.session_state.risk_upload_targets = upload_targets
+        for local_path, git_path in upload_targets:
+            upload_file_to_github(
+                local_path,
+                git_path,
+            )
 
-        # 결과는 같은 실행에서 바로 아래 시각화 영역에 표시합니다.
-        # st.rerun()도 호출하지 않습니다.
+        st.rerun()
 
     except Exception as e:
         st.error(
