@@ -1355,6 +1355,9 @@ if "risk_target_dataset" not in st.session_state:
 if "risk_dataset_ml" not in st.session_state:
     st.session_state.risk_dataset_ml = None
 
+if "risk_upload_targets" not in st.session_state:
+    st.session_state.risk_upload_targets = None
+
 
 # ============================================================
 # 11. 실행 영역
@@ -1398,6 +1401,12 @@ with col_btn2:
             "✅ 모델 학습 결과가 준비되어 있습니다."
         )
 
+
+st.caption(
+    "※ 학습 중에는 GitHub 자동 업로드를 하지 않습니다. "
+    "연결된 저장소에 커밋하면 Streamlit Cloud가 앱을 재배포하여 "
+    "진행 중인 학습이 중단될 수 있기 때문입니다."
+)
 
 if train_clicked:
 
@@ -1491,10 +1500,10 @@ if train_clicked:
             f"({len(dataset):,}건)"
         )
 
-        upload_file_to_github(
-            TARGET_DATA_PATH,
-            "data/processed/[2019_2025] heritage_target_dataset.csv",
-        )
+        # 중요: 학습 도중 GitHub에 파일을 업로드하지 않습니다.
+        # Streamlit Community Cloud가 연결된 GitHub 저장소의 변경을 감지하면
+        # 앱을 재배포/재시작할 수 있어 현재 학습 프로세스가 중단될 수 있습니다.
+        # Target 데이터는 우선 현재 실행 환경의 로컬 파일로만 저장합니다.
 
         status.update(
             label="🧩 머신러닝 Feature 구성 및 Leakage 검사 중...",
@@ -1561,15 +1570,13 @@ if train_clicked:
             ),
         ]
 
-        for local_path, git_path in upload_targets:
-            upload_file_to_github(
-                local_path,
-                git_path,
-            )
+        # GitHub 업로드 대상만 세션에 기록합니다.
+        # 자동 업로드는 하지 않습니다. GitHub 커밋이 Streamlit Cloud의
+        # 재배포를 유발하여 실행 중인 Python 프로세스를 종료할 수 있기 때문입니다.
+        st.session_state.risk_upload_targets = upload_targets
 
-        # 결과는 같은 실행에서 바로 아래 시각화 영역에 표시한다.
-        # st.rerun()을 호출하지 않아 학습 결과가 사라지거나
-        # 재실행 과정에서 화면이 비는 문제를 방지한다.
+        # 결과는 같은 실행에서 바로 아래 시각화 영역에 표시합니다.
+        # st.rerun()도 호출하지 않습니다.
 
     except Exception as e:
         st.error(
