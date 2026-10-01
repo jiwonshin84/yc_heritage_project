@@ -85,6 +85,7 @@ FOLD_RESULTS_PATH = MODEL_DIR / "fold_results.csv"
 FINAL_TEST_PATH = MODEL_DIR / "final_test_result.csv"
 FEATURE_IMPORTANCE_PATH = MODEL_DIR / "feature_importance.csv"
 TARGET_DATA_PATH = DATA_DIR / "[2019_2025] heritage_target_dataset.csv"
+TRAINING_OUTPUTS_PATH = MODEL_DIR / "training_outputs.pkl"
 
 
 # ============================================================
@@ -159,16 +160,26 @@ def find_training_data_path() -> Path:
 def upload_file_to_github(
     local_path: Path,
     git_path: str,
-) -> None:
+) -> bool:
     """
-    모델/결과 파일을 GitHub 저장소에 선택적으로 업로드.
-    Secrets가 없으면 로컬 저장만 수행한다.
+    사용자가 명시적으로 저장을 요청했을 때만 GitHub에 업로드한다.
+
+    - 기존 파일: 현재 SHA를 조회한 뒤 update_file()
+    - 없는 파일(404): create_file()
+    - 409/422 충돌: 최신 SHA를 다시 조회하여 1회 재시도
+
+    학습 자체는 GitHub 업로드 성공 여부와 독립적으로 완료되도록 한다.
     """
     token = st.secrets.get("GITHUB_TOKEN", "")
     repo_name = st.secrets.get("GITHUB_REPO", "")
 
     if not token or not repo_name:
-        return
+        st.warning("GitHub Secrets가 없어 로컬 저장만 유지합니다.")
+        return False
+
+    if not local_path.exists():
+        st.warning(f"업로드할 파일이 없습니다: {local_path}")
+        return False
 
     try:
         repo = Github(token).get_repo(repo_name)
@@ -176,7 +187,7 @@ def upload_file_to_github(
         message = f"model: update {local_path.name}"
 
         try:
-            old = repo.get_contents(git_path)
+            old = repo.get_contents(git_path, ref="main")
             repo.update_file(
                 path=git_path,
                 message=message,
@@ -184,19 +195,50 @@ def upload_file_to_github(
                 sha=old.sha,
                 branch="main",
             )
-        except Exception:
-            repo.create_file(
-                path=git_path,
-                message=message,
-                content=content,
-                branch="main",
-            )
+            return True
 
-        st.toast(f"☁️ GitHub 업로드 완료: {git_path}", icon="🚀")
+        except Exception as first_error:
+            status = getattr(first_error, "status", None)
+
+            if status == 404:
+                try:
+                    repo.create_file(
+                        path=git_path,
+                        message=message,
+                        content=content,
+                        branch="main",
+                    )
+                    return True
+                except Exception as create_error:
+                    # 동시에 같은 파일이 생성된 경우 최신 SHA로 한 번 갱신
+                    if getattr(create_error, "status", None) in (409, 422):
+                        latest = repo.get_contents(git_path, ref="main")
+                        repo.update_file(
+                            path=git_path,
+                            message=message,
+                            content=content,
+                            sha=latest.sha,
+                            branch="main",
+                        )
+                        return True
+                    raise
+
+            if status in (409, 422):
+                latest = repo.get_contents(git_path, ref="main")
+                repo.update_file(
+                    path=git_path,
+                    message=message,
+                    content=content,
+                    sha=latest.sha,
+                    branch="main",
+                )
+                return True
+
+            raise
 
     except Exception as e:
         st.warning(f"GitHub 업로드 실패({git_path}): {e}")
-
+        return False
 
 def train_based_minmax_score(
     series: pd.Series,
@@ -1295,6 +1337,40 @@ def save_training_outputs(
         BUNDLE_PATH,
     )
 
+    # Streamlit의 일반 rerun에서도 결과 화면을 즉시 복원하기 위한 저장본
+    joblib.dump(
+        outputs,
+        TRAINING_OUTPUTS_PATH,
+    )
+
+
+def restore_saved_training_results() -> bool:
+    """저장된 학습 결과가 있으면 Session State를 복원한다."""
+    if (
+        st.session_state.get("risk_training_outputs") is not None
+        and st.session_state.get("risk_target_dataset") is not None
+    ):
+        return True
+
+    if not TRAINING_OUTPUTS_PATH.exists() or not TARGET_DATA_PATH.exists():
+        return False
+
+    try:
+        saved_outputs = joblib.load(TRAINING_OUTPUTS_PATH)
+        saved_dataset = pd.read_csv(
+            TARGET_DATA_PATH,
+            encoding="utf-8-sig",
+        )
+        saved_dataset["date"] = pd.to_datetime(
+            saved_dataset["date"],
+            errors="coerce",
+        )
+        st.session_state.risk_training_outputs = saved_outputs
+        st.session_state.risk_target_dataset = saved_dataset
+        return True
+    except Exception:
+        return False
+
 
 # ============================================================
 # 10. Session State
@@ -1308,6 +1384,9 @@ if "risk_target_dataset" not in st.session_state:
 
 if "risk_dataset_ml" not in st.session_state:
     st.session_state.risk_dataset_ml = None
+
+# 같은 앱 프로세스에서 rerun되거나 저장 결과가 남아 있으면 자동 복원
+restore_saved_training_results()
 
 
 # ============================================================
@@ -1336,7 +1415,7 @@ col_btn1, col_btn2 = st.columns(
 
 with col_btn1:
     train_clicked = st.button(
-        "🧠 분류 모델 학습 시작",
+        "🔄 분류 모델 다시 학습",
         type="primary",
         use_container_width=True,
     )
@@ -1344,8 +1423,8 @@ with col_btn1:
 with col_btn2:
     if st.session_state.risk_training_outputs is None:
         st.info(
-            "학습 버튼을 누르면 Target 생성 → Expanding-Window 검증 → "
-            "최종 모델 저장까지 순서대로 실행합니다."
+            "저장된 결과가 없으면 재학습 버튼을 눌러 Target 생성 → "
+            "Expanding-Window 검증 → Final Test까지 실행합니다."
         )
     else:
         st.success(
@@ -1445,11 +1524,6 @@ if train_clicked:
             f"({len(dataset):,}건)"
         )
 
-        upload_file_to_github(
-            TARGET_DATA_PATH,
-            "data/processed/[2019_2025] heritage_target_dataset.csv",
-        )
-
         status.update(
             label="🧩 머신러닝 Feature 구성 및 Leakage 검사 중...",
             state="running",
@@ -1493,40 +1567,69 @@ if train_clicked:
         )
 
         # ----------------------------------------------------
-        # GitHub 선택적 업로드
+        # 중요: 학습 직후 GitHub에 자동 커밋하지 않는다.
+        # Streamlit Cloud가 GitHub 변경을 감지해 재실행되면서
+        # Session State가 초기화되는 문제를 방지하기 위함이다.
+        # 결과는 현재 화면에 즉시 표시되며, 아래 별도 버튼으로
+        # 사용자가 원할 때만 GitHub에 저장한다.
         # ----------------------------------------------------
-
-        upload_targets = [
-            (MODEL_PATH, "models/best_model.pkl"),
-            (FEATURE_COLS_PATH, "models/feature_cols.pkl"),
-            (TRAIN_MEDIANS_PATH, "models/train_medians.pkl"),
-            (BUNDLE_PATH, "models/heritage_risk_bundle.pkl"),
-            (MODEL_META_PATH, "models/model_metadata.json"),
-            (MODEL_SUMMARY_PATH, "models/model_summary.csv"),
-            (FOLD_RESULTS_PATH, "models/fold_results.csv"),
-            (FINAL_TEST_PATH, "models/final_test_result.csv"),
-            (
-                FEATURE_IMPORTANCE_PATH,
-                "models/feature_importance.csv",
-            ),
-            (
-                TARGET_DATA_PATH,
-                "data/processed/[2019_2025] heritage_target_dataset.csv",
-            ),
-        ]
-
-        for local_path, git_path in upload_targets:
-            upload_file_to_github(
-                local_path,
-                git_path,
-            )
-
-        st.rerun()
+        st.success(
+            "✅ 학습과 로컬 결과 저장이 완료되었습니다. "
+            "아래에서 결과를 바로 확인할 수 있습니다."
+        )
 
     except Exception as e:
         st.error(
             f"❌ 위험 예측 분류 모델 학습 실패: {e}"
         )
+
+
+# ============================================================
+# 11-1. GitHub 수동 저장
+# ============================================================
+
+if st.session_state.risk_training_outputs is not None:
+    with st.expander("☁️ 학습 결과 GitHub 저장", expanded=False):
+        st.caption(
+            "학습 결과 확인 후 필요한 경우에만 누르세요. "
+            "GitHub 커밋으로 Streamlit Cloud가 재실행될 수 있습니다."
+        )
+
+        if st.button(
+            "☁️ 현재 학습 결과를 GitHub에 저장",
+            use_container_width=True,
+            key="save_training_results_to_github",
+        ):
+            upload_targets = [
+                (MODEL_PATH, "models/best_model.pkl"),
+                (FEATURE_COLS_PATH, "models/feature_cols.pkl"),
+                (TRAIN_MEDIANS_PATH, "models/train_medians.pkl"),
+                (BUNDLE_PATH, "models/heritage_risk_bundle.pkl"),
+                (MODEL_META_PATH, "models/model_metadata.json"),
+                (MODEL_SUMMARY_PATH, "models/model_summary.csv"),
+                (FOLD_RESULTS_PATH, "models/fold_results.csv"),
+                (FINAL_TEST_PATH, "models/final_test_result.csv"),
+                (FEATURE_IMPORTANCE_PATH, "models/feature_importance.csv"),
+                (TARGET_DATA_PATH, "data/processed/[2019_2025] heritage_target_dataset.csv"),
+            ]
+
+            ok_count = 0
+            fail_count = 0
+            github_progress = st.progress(0)
+
+            for i, (local_path, git_path) in enumerate(upload_targets, start=1):
+                if upload_file_to_github(local_path, git_path):
+                    ok_count += 1
+                else:
+                    fail_count += 1
+                github_progress.progress(i / len(upload_targets))
+
+            if fail_count == 0:
+                st.success(f"✅ GitHub 저장 완료: {ok_count}개 파일")
+            else:
+                st.warning(
+                    f"GitHub 저장 결과: 성공 {ok_count}개 / 실패 {fail_count}개"
+                )
 
 
 # ============================================================
