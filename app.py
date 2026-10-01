@@ -14,26 +14,26 @@ pages = {
         st.Page("pages/02_프로젝트 개요.py", title="프로젝트 개요", icon="📊"),
     ],
     "문화유산 탐색": [
-        st.Page("pages/03_전국문화유산현황.py", title="전국 문화유산 현황", icon="🏛️"),
-        st.Page("pages/04_영천 국가유산 공간 정보.py", title="영천 국가유산 공간 정보", icon="🗺️"),     
-        st.Page("pages/05_AI 문화재 해설.py", title="AI 문화재 해설", icon="🤖"),     
+        st.Page("pages/03_전국 문화유산 현황.py", title="전국 문화유산 현황", icon="🏛️"),
+        st.Page("pages/04_영천 문화유산 공간 정보.py", title="영천 문화유산 공간 정보", icon="🗺️"),     
+        st.Page("pages/05_AI 문화유산 해설.py", title="AI 문화유산 해설", icon="🤖"),     
     ],
     "환경 취약도 분석": [        
-        st.Page("pages/06_문화유산 취약도 예측.py", title="문화유산 취약도 예측", icon="💡"),     
+        st.Page("pages/06_공공데이터 기반 취약도 예측.py", title="공공데이터 기반 취약도 예측", icon="💡"),     
         st.Page("pages/07_최근 40일 환경 데이터.py", title="최근 40일 환경 데이터", icon="🔵"),  
-        st.Page("pages/08_학습 데이터 수집.py", title="학습 데이터 수집", icon="📥"),
-        st.Page("pages/09_환경 취약도 분류 모델 학습.py", title="환경 취약도 분류 모델 학습", icon="🧠"),     
-        st.Page("pages/10_모델 성능 및 최적화.py", title="모델 성능 및 최적화", icon="📈"),        
-        st.Page("pages/11_2026년 모델 검증.py", title="2026년 모델 검증", icon="🧪"),          
+        st.Page("pages/08_학습 데이터 구축.py", title="학습 데이터 구축", icon="📥"),
+        st.Page("pages/09_환경 취약도 모델 학습.py", title="환경 취약도 모델 학습", icon="🧠"),     
+        st.Page("pages/10_모델 성능 비교 및 평가.py", title="모델 성능 비교 및 평가", icon="📈"),        
+        st.Page("pages/11_2026년 미학습 데이터 예측.py", title="2026년 미학습 데이터 예측", icon="🧪"),          
     ],
     "실시간 모니터링": [
-        st.Page("pages/12_Pico 실시간 환경 데이터.py", title=" Pico 실시간 환경 데이터", icon="📡"),
-        st.Page("pages/13_실시간 환경 위험 진단.py", title="실시간 환경 위험 진단", icon="⚡"),  
-        st.Page("pages/14_실측 데이터 기반 취약도 예측.py", title="실측 데이터 기반 취약도 예측", icon="🛡️"),
+        st.Page("pages/12_Pico W 실시간 환경 데이터.py", title="Pico W 실시간 환경 데이터", icon="📡"),
+        st.Page("pages/13_실시간 환경 상태 진단.py", title="실시간 환경 상태 진단", icon="⚡"),  
+        st.Page("pages/14_실측·공공데이터 결합 예측.py", title="실측·공공데이터 결합 예측", icon="🛡️"),
     ],
     
     "공간 분석": [   
-        st.Page("pages/15_문화유산 관리권역 군집 분석.py", title="군집 분석", icon="🗺️"),   
+        st.Page("pages/15_문화유산 관리권역 군집 분석.py", title="문화유산 관리권역 군집 분석", icon="🗺️"),   
     ]
 }
 
